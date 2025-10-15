@@ -1,0 +1,60 @@
+# --- Python build & environment files ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Streamlit specific ---
+.streamlit/
+
+# --- Jupyter notebooks (if any) ---
+.ipynb_checkpoints
+
+# --- SQLite database & backups ---
+earnings.db
+*.sqlite
+*.db
+*.bak
+
+# --- CSV exports / logs ---
+*.csv
+!data/sample_income.csv
+!data/sample_expenses.csv
+
+# --- Operating system junk ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- VS Code / IDE files ---
+.vscode/
+.idea/
+
+# --- Environment configuration ---
+*.env
+.env.*
+
+# --- PyInstaller / Packaging ---
+*.spec
+output/
+
+# --- Backup files ---
+backups/
