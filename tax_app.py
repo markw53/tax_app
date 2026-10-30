@@ -9,6 +9,8 @@ import altair as alt
 import re
 from pathlib import Path
 
+from tax_engine import TAX_YEARS, calculate_income_tax, calculate_national_insurance
+
 # -------------------------------------------------------------
 #  Setup and folder check
 # -------------------------------------------------------------
@@ -25,102 +27,6 @@ def safe_filename(name: str) -> str:
     return safe.strip("-_.")
 
 # -------------------------------------------------------------
-#  Tax‑year parameters
-# -------------------------------------------------------------
-TAX_YEARS = {
-    "2022/23": {
-        "personal_allowance": 12570,
-        "basic_limit": 50270,
-        "higher_limit": 125140,
-        "basic_rate": 0.20,
-        "higher_rate": 0.40,
-        "additional_rate": 0.45,
-        "ni_lower_limit": 9880,
-        "ni_upper_limit": 50270,
-        "ni_main_rate": 0.0973,
-        "ni_higher_rate": 0.0273,
-        "class2_threshold": 6725,
-        "class2_weekly": 3.15,
-    },
-    "2023/24": {
-        "personal_allowance": 12570,
-        "basic_limit": 50270,
-        "higher_limit": 125140,
-        "basic_rate": 0.20,
-        "higher_rate": 0.40,
-        "additional_rate": 0.45,
-        "ni_lower_limit": 12570,
-        "ni_upper_limit": 50270,
-        "ni_main_rate": 0.09,
-        "ni_higher_rate": 0.02,
-        "class2_threshold": 6725,
-        "class2_weekly": 3.45,
-    },
-    "2024/25": {
-        "personal_allowance": 12570,
-        "basic_limit": 50270,
-        "higher_limit": 125140,
-        "basic_rate": 0.20,
-        "higher_rate": 0.40,
-        "additional_rate": 0.45,
-        "ni_lower_limit": 12570,
-        "ni_upper_limit": 50270,
-        "ni_main_rate": 0.06,
-        "ni_higher_rate": 0.02,
-        "class2_threshold": 6725,
-        "class2_weekly": 3.45,  # Class 2 abolished
-    },
-    "2025/26": {
-        "personal_allowance": 12570,
-        "basic_limit": 50270,
-        "higher_limit": 125140,
-        "basic_rate": 0.20,
-        "higher_rate": 0.40,
-        "additional_rate": 0.45,
-        "ni_lower_limit": 12570,
-        "ni_upper_limit": 50270,
-        "ni_main_rate": 0.06,
-        "ni_higher_rate": 0.02,
-        "class2_threshold": 6845,
-        "class2_weekly": 3.50,  # Class 2 abolished
-    },
-}
-# -------------------------------------------------------------
-#  Core calculations
-# -------------------------------------------------------------
-def calculate_income_tax(income, rules):
-    tax = 0
-    allowance = rules["personal_allowance"]
-    if income > 100000:
-        reduction = (income - 100000) // 2
-        allowance = max(allowance - reduction, 0)
-    taxable = max(income - allowance, 0)
-    if taxable <= 0:
-        return 0
-    if taxable <= (rules["basic_limit"] - allowance):
-        return taxable * rules["basic_rate"]
-    tax = (rules["basic_limit"] - allowance) * rules["basic_rate"]
-    if taxable <= (rules["higher_limit"] - allowance):
-        tax += (taxable - (rules["basic_limit"] - allowance)) * rules["higher_rate"]
-        return tax
-    tax += (rules["higher_limit"] - rules["basic_limit"]) * rules["higher_rate"]
-    tax += (taxable - (rules["higher_limit"] - allowance)) * rules["additional_rate"]
-    return tax
-
-
-def calculate_national_insurance(income, weeks, rules):
-    ni = 0
-    if income > rules["ni_lower_limit"]:
-        if income <= rules["ni_upper_limit"]:
-            ni += (income - rules["ni_lower_limit"]) * rules["ni_main_rate"]
-        else:
-            ni += (rules["ni_upper_limit"] - rules["ni_lower_limit"]) * rules["ni_main_rate"]
-            ni += (income - rules["ni_upper_limit"]) * rules["ni_higher_rate"]
-    if income > rules["class2_threshold"]:
-        ni += weeks * rules["class2_weekly"]
-    return ni
-
-# -------------------------------------------------------------
 #  SQLite helpers
 # -------------------------------------------------------------
 def init_db():
@@ -131,9 +37,23 @@ def init_db():
                     tax_year TEXT, week INTEGER, income REAL)""")
     c.execute("""CREATE TABLE IF NOT EXISTS expenses(
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    tax_year TEXT, category TEXT, amount REAL)""")
+                    tax_year TEXT, category TEXT, amount REAL,
+                    vat_reclaimable INTEGER DEFAULT 1)""")
+    cols = [r[1] for r in c.execute("PRAGMA table_info(expenses)")]
+    if "vat_reclaimable" not in cols:
+        # Older databases assumed every expense carried 20% VAT; keep that,
+        # except for insurance, which is VAT-exempt.
+        c.execute("ALTER TABLE expenses ADD COLUMN vat_reclaimable INTEGER DEFAULT 1")
+        c.execute("UPDATE expenses SET vat_reclaimable=0 WHERE category=?", ("Insurance",))
     conn.commit()
     return conn
+
+
+VAT_EXEMPT_CATEGORIES = {"Insurance"}
+
+
+def default_vat_reclaimable(category):
+    return category not in VAT_EXEMPT_CATEGORIES
 
 
 def add_income(conn, year, amount):
@@ -154,10 +74,10 @@ def delete_expense(conn, exp_id):
         conn.commit()
 
 
-def update_expense(conn, exp_id, category, amount):
+def update_expense(conn, exp_id, category, amount, vat_reclaimable):
     if conn:
-        conn.execute("UPDATE expenses SET category=?,amount=? WHERE id=?",
-                     (category, amount, exp_id))
+        conn.execute("UPDATE expenses SET category=?,amount=?,vat_reclaimable=? WHERE id=?",
+                     (category, amount, int(vat_reclaimable), exp_id))
         conn.commit()
 
 # -------------------------------------------------------------
@@ -205,7 +125,7 @@ year = st.selectbox("Select Tax Year:", list(TAX_YEARS.keys()))
 rules = TAX_YEARS[year]
 mode = st.sidebar.radio("Input Mode", ["Manual Entry", "CSV Upload", "SQLite Database"])
 
-earnings, weeks, total_expenses = [], 0, 0.0
+earnings, total_expenses, vatable_expenses = [], 0.0, 0.0
 vat_registered = False
 vat_rate = 0.0
 
@@ -216,14 +136,12 @@ if mode == "Manual Entry":
     n = st.sidebar.number_input("Weeks to enter", 1, 53, 4)
     for i in range(n):
         earnings.append(st.sidebar.number_input(f"Week {i+1}", 0.0, step=10.0, key=f"inc{i}"))
-    weeks = n
 
 elif mode == "CSV Upload":
     up = st.sidebar.file_uploader("Upload CSV (one income per line)", type=["csv"])
     if up:
         df = pd.read_csv(up, header=None)
         earnings = df[0].tolist()
-        weeks = len(earnings)
 
 # -------------------------------------------------------------
 #  SQLite mode (with VAT and annual option)
@@ -267,8 +185,8 @@ elif mode == "SQLite Database":
             cur.execute("INSERT INTO earnings (tax_year, week, income) VALUES (?,?,?)",
                         (year, 0, annual_income))
             for c, v in annual_expenses:
-                cur.execute("INSERT INTO expenses (tax_year, category, amount) VALUES (?,?,?)",
-                            (year, c, v))
+                cur.execute("INSERT INTO expenses (tax_year, category, amount, vat_reclaimable) "
+                            "VALUES (?,?,?,?)", (year, c, v, int(default_vat_reclaimable(c))))
             conn.commit()
             st.sidebar.success("Annual income and deductions added.")
 
@@ -282,32 +200,36 @@ elif mode == "SQLite Database":
     if exp_cat == "Other (Custom)":
         exp_cat = st.sidebar.text_input("Custom category name")
     exp_amt = st.sidebar.number_input("Amount (£)", 0.0, step=5.0)
+    exp_vat = st.sidebar.checkbox("Includes 20% VAT", default_vat_reclaimable(exp_cat),
+                                  key=f"exp_vat_{exp_cat}")
     if st.sidebar.button("Add Expense"):
-        conn.execute("INSERT INTO expenses (tax_year, category, amount) VALUES (?,?,?)",
-                     (year, exp_cat, exp_amt))
+        conn.execute("INSERT INTO expenses (tax_year, category, amount, vat_reclaimable) "
+                     "VALUES (?,?,?,?)", (year, exp_cat, exp_amt, int(exp_vat)))
         conn.commit()
         st.sidebar.success("Expense added.")
 
     st.markdown("### 💸 Manage Expenses")
-    exp_df = pd.read_sql("SELECT id,category,amount FROM expenses WHERE tax_year=?",
+    exp_df = pd.read_sql("SELECT id,category,amount,vat_reclaimable FROM expenses WHERE tax_year=?",
                          conn, params=(year,))
     if exp_df.empty:
         st.info("No expenses yet.")
     else:
         for _, r in exp_df.iterrows():
-            c1, c2, c3, c4 = st.columns([4, 2, 1, 1])
+            c1, c2, c5, c3, c4 = st.columns([4, 2, 1, 1, 1])
             new_cat = c1.text_input("Category", r["category"], key=f"cat{r['id']}")
             new_amt = c2.number_input("Amount(£)", 0.0, None, float(r["amount"]),
                                       5.0, key=f"amt{r['id']}")
+            new_vat = c5.checkbox("VAT", bool(r["vat_reclaimable"]), key=f"vat{r['id']}")
             if c3.button("💾", key=f"save{r['id']}"):
-                update_expense(conn, r["id"], new_cat, new_amt)
+                update_expense(conn, r["id"], new_cat, new_amt, new_vat)
                 st.success("Updated.")
-                st.experimental_rerun()
+                st.rerun()
             if c4.button("🗑️", key=f"del{r['id']}"):
                 delete_expense(conn, r["id"])
                 st.warning("Deleted.")
-                st.experimental_rerun()
+                st.rerun()
         total_expenses = exp_df["amount"].sum()
+        vatable_expenses = exp_df.loc[exp_df["vat_reclaimable"] == 1, "amount"].sum()
         by_cat = exp_df.groupby("category")["amount"].sum().reset_index()
         st.write(f"**Total Expenses:** £{total_expenses:,.2f}")
         st.bar_chart(by_cat.set_index("category"))
@@ -319,7 +241,6 @@ elif mode == "SQLite Database":
                          conn, params=(year,))
     if not inc_df.empty:
         earnings = inc_df["income"].tolist()
-        weeks = len(inc_df)
 
 # -------------------------------------------------------------
 #  Results section
@@ -329,16 +250,16 @@ if earnings:
     # VAT adjustment
     if vat_registered:
         net_income = gross / (1 + vat_rate)
-        net_expenses = total_expenses / (1 + vat_rate)
+        vat_input = vatable_expenses - vatable_expenses / (1 + vat_rate)
+        net_expenses = total_expenses - vat_input
         vat_output = gross - net_income
-        vat_input = total_expenses - net_expenses
         vat_due = vat_output - vat_input
     else:
         net_income, net_expenses, vat_due = gross, total_expenses, 0.0
 
     net_profit = max(net_income - net_expenses, 0)
     tax = calculate_income_tax(net_profit, rules)
-    ni = calculate_national_insurance(net_profit, weeks or 52, rules)
+    ni = calculate_national_insurance(net_profit, rules)
     total_tax = tax + ni
     take_home = net_profit - total_tax
 
@@ -363,12 +284,12 @@ if earnings:
     }])
     buf = io.StringIO()
     summary.to_csv(buf, index=False)
-    st.download_button("📥 Download Tax Summary",
-                       buf.getvalue(),
-                       file_name=f"tax_summary_{safe_filename(year)}.csv",
-                       mime="text/csv")
+    downloaded = st.download_button("📥 Download Tax Summary",
+                                    buf.getvalue(),
+                                    file_name=f"tax_summary_{safe_filename(year)}.csv",
+                                    mime="text/csv")
 
-    if conn:
+    if downloaded and conn:
         backup_database()
         backup_csv(summary, f"tax_summary_{year}")
         st.success("💾 Backups saved in /backups")
@@ -379,13 +300,14 @@ if earnings:
 st.markdown("---")
 if conn:
     st.header("📊 All Years Summary")
+    # Aggregate each table separately; joining raw rows multiplies the sums.
     all_df = pd.read_sql("""
-        SELECT e.tax_year,
-               SUM(e.income) AS gross,
-               IFNULL(SUM(x.amount),0) AS deds
-          FROM earnings e
-          LEFT JOIN expenses x ON e.tax_year=x.tax_year
-         GROUP BY e.tax_year
+        SELECT e.tax_year, e.gross, IFNULL(x.deds, 0) AS deds
+          FROM (SELECT tax_year, SUM(income) AS gross
+                  FROM earnings GROUP BY tax_year) e
+          LEFT JOIN (SELECT tax_year, SUM(amount) AS deds
+                       FROM expenses GROUP BY tax_year) x
+            ON e.tax_year = x.tax_year
          ORDER BY e.tax_year
     """, conn)
     if not all_df.empty:
@@ -396,7 +318,7 @@ if conn:
             g, d = r["gross"] or 0, r["deds"] or 0
             p = max(g - d, 0)
             t = calculate_income_tax(p, rule)
-            n = calculate_national_insurance(p, 52, rule)
+            n = calculate_national_insurance(p, rule)
             data.append({"Year": yr, "Gross": g, "Deductions": d,
                          "Profit": p, "Tax": t, "NI": n, "Net": p - t - n})
         df = pd.DataFrame(data)

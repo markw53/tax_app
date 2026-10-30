@@ -7,7 +7,7 @@ This is a personal Streamlit web app designed for **self‑employed UK delivery 
 ## 🚀 Features
 
 ✅ **Multi‑Year Support**  
-Choose and save data for any tax year (2022/23, 2023/24, 2024/25).  
+Choose and save data for any tax year (2022/23 to 2026/27). Tax rules live in `tax_engine/rules.py`; Class 2 NI is only charged up to 2023/24, after which it was abolished.  
 
 ✅ **Variable Weekly Income Tracking**  
 Add income entries manually, via CSV upload, or directly into a local SQLite database.  
@@ -30,6 +30,15 @@ Automatic charts for:
 
 ✅ **Export to CSV**  
 Download detailed yearly summaries or income logs for your records or your accountant.
+
+> Figures are estimates for rest-of-UK taxpayers (Scottish income tax rates aren't supported yet).
+
+## 🧪 Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
 ---
 
