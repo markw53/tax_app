@@ -235,7 +235,7 @@ elif mode == "SQLite Database":
         st.bar_chart(by_cat.set_index("category"))
         pie = alt.Chart(by_cat).mark_arc().encode(
             theta="amount:Q", color="category:N", tooltip=["category", "amount"])
-        st.altair_chart(pie, use_container_width=True)
+        st.altair_chart(pie, width="stretch")
 
     inc_df = pd.read_sql("SELECT week,income FROM earnings WHERE tax_year=?",
                          conn, params=(year,))
@@ -330,7 +330,7 @@ if conn:
             x="Year:N", y="Value:Q", color="Metric:N",
             tooltip=["Year","Metric","Value"]
         )
-        st.altair_chart(chart, use_container_width=True)
+        st.altair_chart(chart, width="stretch")
 
 st.header("💾 Backup Management")
 files = list_backups()
