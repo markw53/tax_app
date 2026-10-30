@@ -1,11 +1,9 @@
 import re
 from datetime import date
-from pathlib import Path
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.middleware.sessions import SessionMiddleware
@@ -14,13 +12,15 @@ from tax_engine import TAX_YEARS, estimate_tax
 
 from . import categories
 from .auth import authenticate
+from .categories import PROPERTY_FINANCE_COST
 from .csv_import import parse_transactions
-from .db import SessionLocal, secret_key
-from .models import IncomeSource, MileageTrip, Property, PropertyOwner, Transaction, User
+from .db import secret_key
+from .hmrc_routes import router as hmrc_router
+from .models import IncomeSource, MileageTrip, Property, Transaction, User
 from .money import format_pence, parse_miles_tenths, parse_pence
 from .periods import quarters, tax_year_bounds, tax_year_of
-from .categories import PROPERTY_FINANCE_COST
 from .records import mileage_allowance_pence, profit_pence, totals_for
+from .web import DB, CurrentUser, LoginRequired, flash, get_db, redirect, render  # noqa: F401
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
@@ -28,49 +28,13 @@ app = FastAPI(title="MTD records")
 app.add_middleware(SessionMiddleware, secret_key=secret_key(), same_site="lax",
                    max_age=60 * 60 * 12)
 
-templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-templates.env.filters["money"] = format_pence
-templates.env.globals["category_label"] = categories.label
-templates.env.globals["categories"] = categories.BY_SOURCE_TYPE
 
-
-class LoginRequired(Exception):
-    pass
+app.include_router(hmrc_router)
 
 
 @app.exception_handler(LoginRequired)
 async def _to_login(request: Request, exc: LoginRequired):
     return RedirectResponse("/login", status_code=303)
-
-
-def get_db():
-    with SessionLocal() as session:
-        yield session
-
-
-def current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    user_id = request.session.get("user_id")
-    user = db.get(User, user_id) if user_id else None
-    if not user:
-        raise LoginRequired()
-    return user
-
-
-DB = Annotated[Session, Depends(get_db)]
-CurrentUser = Annotated[User, Depends(current_user)]
-
-
-def flash(request: Request, message: str, kind: str = "ok"):
-    request.session.setdefault("flash", []).append([kind, message])
-
-
-def render(request: Request, template: str, **ctx):
-    ctx["flashes"] = request.session.pop("flash", [])
-    return templates.TemplateResponse(request, template, ctx)
-
-
-def redirect(url: str):
-    return RedirectResponse(url, status_code=303)
 
 
 def pick_year(year: str | None) -> str:

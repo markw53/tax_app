@@ -61,3 +61,5 @@ backups/
 
 # --- MTD app ---
 .secret_key
+.env.hmrc
+.encryption_key

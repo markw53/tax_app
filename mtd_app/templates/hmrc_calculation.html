@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}HMRC calculation · MTD records{% endblock %}
+{% block content %}
+<h1>HMRC calculation for {{ year }}</h1>
+<p class="muted"><a href="/hmrc?year={{ year }}">Back to HMRC</a> · Calculation {{ calc_id }}</p>
+
+{% if pending %}
+<div class="card"><p>HMRC is still working this out. <a href="">Refresh</a> in a few seconds.</p></div>
+{% elif error %}
+<div class="flash error">{{ error }}</div>
+{% else %}
+<div class="card">
+  <div class="stats">
+    {% if tax.incomeTax %}<div class="stat"><div class="muted">Income tax</div><div class="v">£{{ "{:,.2f}".format(tax.incomeTax.totalIncomeTaxDue or 0) }}</div></div>{% endif %}
+    {% if tax.nics %}<div class="stat"><div class="muted">National Insurance</div><div class="v">£{{ "{:,.2f}".format(tax.nics.totalNic or 0) }}</div></div>{% endif %}
+    {% if tax.totalIncomeTaxAndNicsDue is defined %}<div class="stat"><div class="muted">Total due</div><div class="v">£{{ "{:,.2f}".format(tax.totalIncomeTaxAndNicsDue) }}</div></div>{% endif %}
+  </div>
+  <p class="muted">HMRC's in-year estimate, based on the updates it has received.</p>
+  <details><summary>Full response</summary><pre style="white-space: pre-wrap;">{{ raw }}</pre></details>
+</div>
+{% endif %}
+{% endblock %}

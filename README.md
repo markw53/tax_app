@@ -34,6 +34,16 @@ python3 -m venv .venv
 
 Run `python -m mtd_app.cli --help` for the other commands (`set-password`, `list`). After changing `mtd_app/models.py`, create a migration with `alembic revision --autogenerate -m "..."`.
 
+**Connecting to HMRC** (sandbox for now): put your Developer Hub application's credentials in `.env.hmrc` (gitignored), restart, and open the **HMRC** page:
+
+```
+HMRC_CLIENT_ID=...
+HMRC_CLIENT_SECRET=...
+HMRC_ENV=sandbox
+```
+
+From there you add your NINO, sign in with HMRC, link each income source to its HMRC business, and review then send quarterly updates. Every submission, accepted or rejected, is kept with exactly what was sent. HMRC's tokens are stored encrypted with `MTD_ENCRYPTION_KEY` (otherwise generated once into `.encryption_key`; keep it with your database backup, or you'll need to reconnect).
+
 **Configuration:** `MTD_DATABASE_URL` (default `sqlite:///mtd.db`) and `MTD_SECRET_KEY` (otherwise generated once into `.secret_key`). Back up `mtd.db`: HMRC requires you to keep records for at least 5 years after the 31 January filing deadline.
 
 ---

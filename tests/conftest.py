@@ -1,6 +1,8 @@
 import os
 
 os.environ.setdefault("MTD_SECRET_KEY", "test-secret")
+# Fixed test-only Fernet key so tests never write .encryption_key
+os.environ.setdefault("MTD_ENCRYPTION_KEY", "q2PQ0j9f8wGqJ3yQ0V9bXo0y6wq1m3Jt7r5l2YJ6c0E=")
 
 import pytest  # noqa: E402
 from sqlalchemy import create_engine, event  # noqa: E402
