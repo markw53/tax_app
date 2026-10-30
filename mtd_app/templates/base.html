@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}MTD records{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #fff; --text: #1b1f24; --muted: #5d6670; --line: #dde1e6;
+    --accent: #1d5fd1; --ok-bg: #e6f4ea; --ok: #1e6b34; --err-bg: #fdecea; --err: #a1261b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171b; --card: #1d2126; --text: #e6e9ed; --muted: #9aa3ad; --line: #30363d;
+      --accent: #6ea2ff; --ok-bg: #173523; --ok: #8fd6a5; --err-bg: #3d1a17; --err: #f3a39a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { background: var(--card); border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; padding-block: 10px; }
+  header a.home { font-weight: 600; color: var(--text); text-decoration: none; margin-right: auto; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+  main.wrap { padding-block: 20px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 16px; margin-bottom: 16px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: .85rem; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.total td { font-weight: 600; border-bottom: none; }
+  form.inline { display: inline; }
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); align-items: end; }
+  label { display: block; font-size: .85rem; color: var(--muted); }
+  input, select, button { font: inherit; width: 100%; padding: 8px 10px; border-radius: 6px;
+                          border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  button { background: var(--accent); color: #fff; border: none; cursor: pointer; font-weight: 600; }
+  button.link { background: none; color: var(--muted); padding: 0 4px; width: auto; font-weight: normal; }
+  button.link:hover { color: var(--err); }
+  .flash { padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; background: var(--ok-bg); color: var(--ok); }
+  .flash.error { background: var(--err-bg); color: var(--err); }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; margin-bottom: 16px; }
+  .row select { width: auto; }
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  .stat .v { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .due { color: var(--err); font-weight: 600; }
+  details summary { cursor: pointer; color: var(--accent); }
+</style>
+</head>
+<body>
+{% if user %}
+<header><div class="wrap">
+  <a class="home" href="/">MTD records</a>
+  <span class="muted">{{ user.name }}</span>
+  <form class="inline" method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
+</div></header>
+{% endif %}
+<main class="wrap">
+  {% for kind, message in flashes %}<div class="flash {{ kind }}">{{ message }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

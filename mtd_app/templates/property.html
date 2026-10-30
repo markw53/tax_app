@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ prop.name }} · MTD records{% endblock %}
+{% block content %}
+<div class="row">
+  <div><h1>{{ prop.name }}</h1><span class="muted">UK property · <a href="/?year={{ year }}">back to summary</a></span></div>
+  {% include "_year.html" %}
+</div>
+
+<div class="card">
+  <div class="stats">
+    <div class="stat"><div class="muted">Income (whole property)</div><div class="v">{{ income|money }}</div></div>
+    <div class="stat"><div class="muted">Expenses (whole property)</div><div class="v">{{ expenses|money }}</div></div>
+  </div>
+  <p class="muted" style="margin-bottom: 0;">Enter the full amounts. Each owner's share is worked out automatically:
+    {% for o in prop.owners %}{{ o.user.name }} {{ "%g"|format(o.share_bp / 100) }}%{% if not loop.last %}, {% endif %}{% endfor %}.
+    Mortgage interest goes under “Residential mortgage interest”: it isn't deducted from profit but gives a 20% tax credit.</p>
+</div>
+
+{% include "_ledger.html" %}
+{% endblock %}

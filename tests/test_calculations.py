@@ -71,3 +71,19 @@ def test_class2_ni_2023_24(profit, expected):
 
 def test_every_year_has_rules():
     assert set(TAX_YEARS) >= {"2022/23", "2023/24", "2024/25", "2025/26", "2026/27"}
+
+
+def test_estimate_with_property_and_finance_costs():
+    from tax_engine import estimate_tax
+    est = estimate_tax(30_000, 8_000, 3_000, Y2526)
+    assert est["income_tax"] == pytest.approx(5_086)
+    assert est["finance_cost_credit"] == pytest.approx(600)
+    assert est["class4_ni"] == pytest.approx(1_045.80)
+    assert est["total"] == pytest.approx(5_531.80)
+
+
+def test_finance_credit_capped_by_income_above_allowance():
+    from tax_engine import estimate_tax
+    est = estimate_tax(0, 5_000, 3_000, Y2526)
+    assert est["finance_cost_credit"] == 0
+    assert est["total"] == 0

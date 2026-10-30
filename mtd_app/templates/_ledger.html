@@ -1,0 +1,52 @@
+{# Add-transaction form, CSV import and transaction list. Needs: post_url, source_type, txns, today #}
+<div class="card">
+  <h2>Add a transaction</h2>
+  <form method="post" action="{{ post_url }}/transactions" class="grid">
+    <div><label for="t-date">Date</label><input id="t-date" name="date" type="date" value="{{ today.isoformat() }}" required></div>
+    <div style="grid-column: span 2;"><label for="t-entry">Category</label>
+      <select id="t-entry" name="entry" required>
+        <option value="">Choose…</option>
+        {% for kind in ("income", "expense") %}
+        <optgroup label="{{ kind|capitalize }}">
+          {% for key, label in categories[source_type][kind].items() %}
+          <option value="{{ kind }}:{{ key }}">{{ label }}</option>
+          {% endfor %}
+        </optgroup>
+        {% endfor %}
+      </select></div>
+    <div><label for="t-amount">Amount (£)</label><input id="t-amount" name="amount" inputmode="decimal" placeholder="0.00" required></div>
+    <div style="grid-column: span 2;"><label for="t-desc">Description</label><input id="t-desc" name="description" maxlength="255"></div>
+    <div><button type="submit">Add</button></div>
+  </form>
+  <details style="margin-top: 12px;">
+    <summary>Import from CSV</summary>
+    <p class="muted">Columns: <code>date, type, category, amount, description</code>. Type is <code>income</code> or <code>expense</code>; category can be the name shown above. Dates as YYYY-MM-DD or DD/MM/YYYY. If any row has a problem, nothing is imported.</p>
+    <form method="post" action="{{ post_url }}/import" enctype="multipart/form-data" class="grid">
+      <div style="grid-column: span 2;"><input type="file" name="file" accept=".csv,text/csv" required></div>
+      <div><button type="submit">Import</button></div>
+    </form>
+  </details>
+</div>
+
+<div class="card">
+  <h2>Transactions</h2>
+  {% if txns %}
+  <table>
+    <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="num">Amount</th><th></th></tr></thead>
+    <tbody>
+    {% for t in txns %}
+      <tr>
+        <td style="white-space: nowrap;">{{ t.date.strftime("%-d %b %Y") }}</td>
+        <td>{{ category_label(source_type, t.kind, t.category) }}</td>
+        <td>{{ t.description }}</td>
+        <td class="num">{% if t.kind == "expense" %}−{% endif %}{{ t.amount_pence|money }}</td>
+        <td><form class="inline" method="post" action="/transactions/{{ t.id }}/delete" onsubmit="return confirm('Delete this transaction?')">
+          <button class="link" type="submit" aria-label="Delete">✕</button></form></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No transactions in {{ year }} yet.</p>
+  {% endif %}
+</div>

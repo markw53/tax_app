@@ -1,3 +1,14 @@
+# Phase 1 calculator (tax_app.py)
 streamlit>=1.66
 pandas
 altair
+
+# MTD records app (mtd_app/)
+fastapi>=0.115
+uvicorn[standard]
+sqlalchemy>=2.0
+alembic
+jinja2
+python-multipart
+itsdangerous
+argon2-cffi

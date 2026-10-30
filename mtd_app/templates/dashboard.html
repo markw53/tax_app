@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+  <div><h1>{{ year }}</h1><span class="muted">{{ "Calendar" if user.calendar_quarters else "Standard" }} quarters</span></div>
+  {% include "_year.html" %}
+</div>
+
+{% if estimate %}
+<div class="card">
+  <h2>Estimated tax for the year so far</h2>
+  <div class="stats">
+    <div class="stat"><div class="muted">Taxable income</div><div class="v">{{ estimate.total_income|money }}</div></div>
+    <div class="stat"><div class="muted">Income tax</div><div class="v">{{ (estimate.income_tax - estimate.finance_cost_credit)|money }}</div></div>
+    <div class="stat"><div class="muted">National Insurance</div><div class="v">{{ (estimate.class4_ni + estimate.class2_ni)|money }}</div></div>
+    <div class="stat"><div class="muted">Total</div><div class="v">{{ estimate.total|money }}</div></div>
+  </div>
+  <p class="muted" style="margin-bottom: 0;">
+    An estimate from your records only{% if estimate.finance_cost_credit %}, after a {{ estimate.finance_cost_credit|money }} credit for mortgage interest{% endif %}.
+    It leaves out other income (employment, savings, pensions), capital allowances and losses, and uses rest-of-UK rates.
+  </p>
+</div>
+{% endif %}
+
+{% for s in summaries %}
+<div class="card">
+  <div class="row" style="margin-bottom: 8px;">
+    <h2 style="margin: 0;">{{ s.source.name }} <span class="muted" style="font-weight: normal;">· {{ "Self-employment" if s.source.type == "self-employment" else "UK property (your share)" }}</span></h2>
+    {% if s.source.type == "self-employment" %}<a href="/sources/{{ s.source.id }}?year={{ year }}">Records →</a>{% endif %}
+  </div>
+  <table>
+    <thead><tr><th>Quarter</th><th>Update due</th><th class="num">Income</th><th class="num">Expenses</th><th class="num">Profit</th></tr></thead>
+    <tbody>
+    {% for r in s.rows %}
+      <tr>
+        <td>{{ r.quarter.label }}</td>
+        <td {% if r.quarter.end < today <= r.quarter.deadline %}class="due"{% endif %}>{{ r.quarter.deadline.strftime("%-d %b %Y") }}</td>
+        <td class="num">{{ r.income|money }}</td>
+        <td class="num">{{ r.expenses|money }}</td>
+        <td class="num">{{ r.profit|money }}</td>
+      </tr>
+    {% endfor %}
+      <tr class="total"><td>Year</td><td></td>
+        <td class="num">{{ s.ytd.total_income|money }}</td>
+        <td class="num">{{ s.ytd.total_expenses|money }}</td>
+        <td class="num">{{ s.profit|money }}</td></tr>
+    </tbody>
+  </table>
+  {% set finance = s.ytd.expense.get("residentialFinancialCost", 0) %}
+  {% if finance %}<p class="muted" style="margin-bottom: 0;">Profit leaves out {{ finance|money }} of mortgage interest, which gets a 20% tax credit instead of being deducted.</p>{% endif %}
+</div>
+{% else %}
+<div class="card"><p class="muted">No income sources set up yet. Add one with <code>python -m mtd_app.cli add-source</code>.</p></div>
+{% endfor %}
+
+{% if properties %}
+<div class="card">
+  <h2>Properties</h2>
+  <table>
+    <thead><tr><th>Property</th><th>Owners</th></tr></thead>
+    <tbody>
+    {% for p in properties %}
+      <tr><td><a href="/properties/{{ p.id }}?year={{ year }}">{{ p.name }}</a></td>
+        <td>{% for o in p.owners %}{{ o.user.name }} {{ "%g"|format(o.share_bp / 100) }}%{% if not loop.last %}, {% endif %}{% endfor %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<p class="muted">Under MTD, each quarterly update sends HMRC your totals for the year to date, so you can correct earlier quarters by fixing the records and sending the next update.</p>
+{% endblock %}

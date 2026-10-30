@@ -58,3 +58,6 @@ output/
 
 # --- Backup files ---
 backups/
+
+# --- MTD app ---
+.secret_key

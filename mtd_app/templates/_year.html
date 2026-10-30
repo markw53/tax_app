@@ -1,0 +1,7 @@
+<form method="get">
+  <label for="year" class="muted">Tax year</label>
+  <select id="year" name="year" onchange="this.form.submit()">
+    {% for y in years %}<option {% if y == year %}selected{% endif %}>{{ y }}</option>{% endfor %}
+  </select>
+  <noscript><button type="submit">Go</button></noscript>
+</form>

@@ -4,6 +4,42 @@ This is a personal Streamlit web app designed for **self‑employed UK delivery 
 
 ---
 
+## 🧾 MTD records app (`mtd_app/`)
+
+A multi-user web app for keeping Making Tax Digital records: self-employment and UK property income, with jointly owned property split between owners automatically. It doesn't talk to HMRC yet; that's the next phase.
+
+**What it does**
+
+- A separate login for each taxpayer; you only see your own records and properties you own
+- Transactions in HMRC's categories (SA103F / SA105), entered by hand or imported from CSV
+- Joint property: enter the full amounts once, and each owner gets their share
+- Mileage log, with the simplified 45p/25p mileage allowance if you choose that method
+- Quarterly totals with update deadlines, plus an estimated tax bill for the year
+
+**Setup**
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/alembic upgrade head          # creates mtd.db
+
+.venv/bin/python -m mtd_app.cli create-user --email you@example.com --name "Your Name"
+.venv/bin/python -m mtd_app.cli add-source --email you@example.com --type self-employment \
+    --name "Delivery driving" --vehicle-method simplified
+.venv/bin/python -m mtd_app.cli add-property --name "Rental flat" \
+    --owner you@example.com:50 --owner partner@example.com:50
+
+.venv/bin/uvicorn mtd_app.main:app      # then open http://localhost:8000
+```
+
+Run `python -m mtd_app.cli --help` for the other commands (`set-password`, `list`). After changing `mtd_app/models.py`, create a migration with `alembic revision --autogenerate -m "..."`.
+
+**Configuration:** `MTD_DATABASE_URL` (default `sqlite:///mtd.db`) and `MTD_SECRET_KEY` (otherwise generated once into `.secret_key`). Back up `mtd.db`: HMRC requires you to keep records for at least 5 years after the 31 January filing deadline.
+
+---
+
+## 📊 Phase 1 calculator (`tax_app.py`)
+
 ## 🚀 Features
 
 ✅ **Multi‑Year Support**  
