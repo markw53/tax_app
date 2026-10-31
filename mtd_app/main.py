@@ -1,5 +1,6 @@
 import re
-from datetime import date
+import time
+from datetime import date, datetime, timezone
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -10,11 +11,12 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from tax_engine import TAX_YEARS, estimate_tax
 
-from . import categories
+from . import categories, mfa
 from .auth import authenticate
 from .categories import PROPERTY_FINANCE_COST
 from .csv_import import parse_transactions
 from .db import secret_key
+from .hmrc_config import decrypt, encrypt
 from .hmrc_routes import router as hmrc_router
 from .models import IncomeSource, MileageTrip, Property, Transaction, User
 from .money import format_pence, parse_miles_tenths, parse_pence
@@ -23,6 +25,9 @@ from .records import mileage_allowance_pence, profit_pence, totals_for
 from .web import DB, CurrentUser, LoginRequired, flash, get_db, redirect, render  # noqa: F401
 
 MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+# Time allowed between giving a password and the authenticator code
+PENDING_SECONDS = 10 * 60
+MAX_CODE_TRIES = 5
 
 app = FastAPI(title="MTD records")
 app.add_middleware(SessionMiddleware, secret_key=secret_key(), same_site="lax",
@@ -75,7 +80,84 @@ def login(request: Request, db: DB, email: Annotated[str, Form()], password: Ann
         flash(request, "Email or password not recognised.", "error")
         return redirect("/login")
     request.session.clear()
+    request.session["pending"] = {"user_id": user.id, "at": time.time(), "tries": 0}
+    return redirect("/login/code" if user.totp_secret else "/login/setup")
+
+
+def _pending_user(request: Request, db: Session) -> User:
+    """The user who has given their password but not yet a code."""
+    pending = request.session.get("pending")
+    user = db.get(User, pending["user_id"]) if pending else None
+    if not user or time.time() - pending["at"] > PENDING_SECONDS:
+        request.session.pop("pending", None)
+        raise LoginRequired()
+    return user
+
+
+def _check_code(request: Request, db: Session, user: User, secret: str, code: str) -> bool:
+    step = mfa.verify(secret, code, user.totp_last_step)
+    if step is None:
+        pending = request.session["pending"]
+        pending["tries"] += 1
+        request.session["pending"] = pending
+        if pending["tries"] >= MAX_CODE_TRIES:
+            request.session.clear()
+            flash(request, "Too many wrong codes. Sign in again.", "error")
+            raise LoginRequired()
+        flash(request, "That code didn't match. Check your authenticator app and try again.", "error")
+        return False
+    user.totp_last_step = step
+    db.commit()
+    request.session.clear()
     request.session["user_id"] = user.id
+    # For HMRC's Gov-Client-Multi-Factor header
+    request.session["mfa"] = {"type": "TOTP", "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+                              "ref": mfa.reference(secret)}
+    return True
+
+
+@app.get("/login/code")
+def login_code_form(request: Request, db: DB):
+    _pending_user(request, db)
+    return render(request, "login_code.html")
+
+
+@app.post("/login/code")
+def login_code(request: Request, db: DB, code: Annotated[str, Form()]):
+    user = _pending_user(request, db)
+    if not user.totp_secret:
+        return redirect("/login/setup")
+    if _check_code(request, db, user, decrypt(user.totp_secret), code):
+        return redirect("/")
+    return redirect("/login/code")
+
+
+@app.get("/login/setup")
+def login_setup_form(request: Request, db: DB):
+    user = _pending_user(request, db)
+    if user.totp_secret:
+        return redirect("/login/code")
+    pending = request.session["pending"]
+    if "secret" not in pending:
+        pending["secret"] = encrypt(mfa.new_secret())
+        request.session["pending"] = pending
+    secret = decrypt(pending["secret"])
+    return render(request, "login_setup.html", secret=secret,
+                  qr=mfa.qr_svg(mfa.otpauth_uri(secret, user.email)))
+
+
+@app.post("/login/setup")
+def login_setup(request: Request, db: DB, code: Annotated[str, Form()]):
+    user = _pending_user(request, db)
+    secret_token = request.session["pending"].get("secret")
+    if user.totp_secret or not secret_token:
+        return redirect("/login/setup")
+    secret = decrypt(secret_token)
+    if not _check_code(request, db, user, secret, code):
+        return redirect("/login/setup")
+    user.totp_secret = encrypt(secret)
+    db.commit()
+    flash(request, "Two-step sign-in is set up. You'll need a code from your app each time you sign in.")
     return redirect("/")
 
 

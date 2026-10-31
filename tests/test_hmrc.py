@@ -16,6 +16,8 @@ from mtd_app.main import app, get_db
 from mtd_app.models import HmrcConnection, IncomeSource, Submission, Transaction, User
 from mtd_app.records import Totals
 
+from .conftest import sign_in, totp_secret
+
 PASSWORD = "correct horse battery"
 NINO = "AA123456A"
 CONFIG = HmrcConfig(client_id="cid", client_secret="csecret")
@@ -84,7 +86,8 @@ def env(session_factory, hmrc):
     app.dependency_overrides[get_hmrc_client] = lambda: HmrcClient(
         CONFIG, http=httpx.Client(transport=httpx.MockTransport(hmrc)))
     with session_factory() as s:
-        u = User(email="a@example.com", name="Alex", password_hash=hash_password(PASSWORD))
+        u = User(email="a@example.com", name="Alex", password_hash=hash_password(PASSWORD),
+                 totp_secret=totp_secret())
         s.add(u)
         s.flush()
         src = IncomeSource(user_id=u.id, type="self-employment", name="Delivery driving",
@@ -107,7 +110,7 @@ def env(session_factory, hmrc):
 
 def logged_in():
     c = TestClient(app)
-    c.post("/login", data={"email": "a@example.com", "password": PASSWORD}, follow_redirects=False)
+    sign_in(c, "a@example.com", PASSWORD)
     return c
 
 
@@ -146,17 +149,19 @@ def test_property_payload():
 
 # ------------------------------------------------------ fraud headers
 
-def _request(client=("81.2.69.160", 51234), cookie=None, headers=()):
+def _request(client=("81.2.69.160", 51234), cookie=None, headers=(), session=None):
     raw = [(b"cookie", f"{fraud_headers.CLIENT_COOKIE}={cookie}".encode())] if cookie else []
     raw += [(k.encode(), v.encode()) for k, v in headers]
-    return Request({"type": "http", "method": "GET", "path": "/", "headers": raw, "client": client})
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": raw, "client": client,
+                    "session": session or {}})
 
 
 def test_fraud_headers_from_browser_and_request():
     cookie = quote(json.dumps({
         "ua": "Mozilla/5.0 (X11)", "device": "beec798b-b366-47fa-b1f8-92cede14a1ce", "tz": "UTC+01:00",
         "screens": [{"w": 1920, "h": 1080, "s": 1.25, "d": 24}], "win": {"w": 1256, "h": 803}}))
-    h = fraud_headers.build(_request(cookie=cookie), 7,
+    mfa = {"type": "TOTP", "at": "2026-10-30T14:29Z", "ref": "ab12"}
+    h = fraud_headers.build(_request(cookie=cookie, session={"mfa": mfa}), 7,
                             HmrcConfig("a", "b", vendor_public_ip="81.2.69.200"),
                             now=datetime(2026, 10, 30, 14, 30, 5, 123000, tzinfo=timezone.utc))
     assert h == {
@@ -175,6 +180,7 @@ def test_fraud_headers_from_browser_and_request():
         "Gov-Client-Public-Port": "51234",
         "Gov-Vendor-Public-IP": "81.2.69.200",
         "Gov-Vendor-Forwarded": "by=81.2.69.200&for=81.2.69.160",
+        "Gov-Client-Multi-Factor": "type=TOTP&timestamp=2026-10-30T14%3A29Z&unique-reference=ab12",
     }
     assert fraud_headers.missing(h) == []
 
@@ -335,10 +341,11 @@ def test_calculation(env):
 
 def test_other_users_source_not_accessible(env, session_factory):
     with session_factory() as s:
-        s.add(User(email="b@example.com", name="Sam", password_hash=hash_password(PASSWORD)))
+        s.add(User(email="b@example.com", name="Sam", password_hash=hash_password(PASSWORD),
+                 totp_secret=totp_secret()))
         s.commit()
     c = TestClient(app)
-    c.post("/login", data={"email": "b@example.com", "password": PASSWORD}, follow_redirects=False)
+    sign_in(c, "b@example.com", PASSWORD)
     assert c.get(f"/hmrc/update/{env['source']}?year=2026/27&end=2026-07-05").status_code == 404
 
 

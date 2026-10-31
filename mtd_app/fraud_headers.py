@@ -82,6 +82,12 @@ def build(request: Request, user_id: int, config: HmrcConfig,
             now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"),
     }
 
+    # Set at sign-in once the authenticator code has been checked
+    factor = (request.scope.get("session") or {}).get("mfa")
+    if isinstance(factor, dict) and factor.get("type"):
+        headers["Gov-Client-Multi-Factor"] = _pairs(
+            type=factor["type"], timestamp=factor.get("at"), unique_reference=factor.get("ref"))
+
     if isinstance(data.get("ua"), str) and data["ua"]:
         headers["Gov-Client-Browser-JS-User-Agent"] = data["ua"]
     if isinstance(data.get("device"), str) and data["device"]:
@@ -114,6 +120,7 @@ def build(request: Request, user_id: int, config: HmrcConfig,
 
 REQUIRED = [
     "Gov-Client-Connection-Method", "Gov-Client-Browser-JS-User-Agent", "Gov-Client-Device-ID",
+    "Gov-Client-Multi-Factor",
     "Gov-Client-Public-IP", "Gov-Client-Public-IP-Timestamp", "Gov-Client-Public-Port",
     "Gov-Client-Screens", "Gov-Client-Timezone", "Gov-Client-User-IDs", "Gov-Client-Window-Size",
     "Gov-Vendor-Forwarded", "Gov-Vendor-License-IDs", "Gov-Vendor-Product-Name", "Gov-Vendor-Public-IP",

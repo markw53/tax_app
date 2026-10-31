@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Sign in · MTD records{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 380px; margin: 40px auto;">
+  <h1>Enter your code</h1>
+  <p class="muted">Open your authenticator app and enter the 6-digit code for MTD records.</p>
+  <form method="post" action="/login/code">
+    <p><label for="code">Code</label><input id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" autocomplete="one-time-code" required autofocus></p>
+    <button type="submit">Sign in</button>
+  </form>
+  <p class="muted" style="margin-bottom: 0;"><a href="/login">Start again</a></p>
+</div>
+{% endblock %}

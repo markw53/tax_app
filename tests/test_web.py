@@ -7,6 +7,8 @@ from mtd_app.auth import hash_password
 from mtd_app.main import app, get_db
 from mtd_app.models import IncomeSource, Property, PropertyOwner, Transaction, User
 
+from .conftest import sign_in, totp_secret
+
 PASSWORD = "correct horse battery"
 
 
@@ -18,8 +20,10 @@ def setup(session_factory):
     app.dependency_overrides[get_db] = _db
 
     with session_factory() as s:
-        a = User(email="a@example.com", name="Alex", password_hash=hash_password(PASSWORD))
-        b = User(email="b@example.com", name="Sam", password_hash=hash_password(PASSWORD))
+        a = User(email="a@example.com", name="Alex", password_hash=hash_password(PASSWORD),
+                 totp_secret=totp_secret())
+        b = User(email="b@example.com", name="Sam", password_hash=hash_password(PASSWORD),
+                 totp_secret=totp_secret())
         s.add_all([a, b])
         s.flush()
         driving = IncomeSource(user_id=a.id, type="self-employment", name="Delivery driving",
@@ -42,8 +46,7 @@ def setup(session_factory):
 def client_for(email=None):
     c = TestClient(app)
     if email:
-        r = c.post("/login", data={"email": email, "password": PASSWORD}, follow_redirects=False)
-        assert r.status_code == 303 and r.headers["location"] == "/"
+        sign_in(c, email, PASSWORD)
     return c
 
 

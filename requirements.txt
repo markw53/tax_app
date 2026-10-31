@@ -14,3 +14,4 @@ itsdangerous
 argon2-cffi
 cryptography
 httpx
+segno

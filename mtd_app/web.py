@@ -29,7 +29,8 @@ def get_db():
 
 def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     user_id = request.session.get("user_id")
-    user = db.get(User, user_id) if user_id else None
+    # Sessions from before two-step sign-in have no "mfa" and must sign in again
+    user = db.get(User, user_id) if user_id and request.session.get("mfa") else None
     if not user:
         raise LoginRequired()
     return user

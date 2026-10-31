@@ -53,6 +53,14 @@ def set_password(db, args):
     print(f"Password updated for {user.email}")
 
 
+def reset_mfa(db, args):
+    user = _user(db, args.email)
+    user.totp_secret = None
+    user.totp_last_step = None
+    db.commit()
+    print(f"Two-step sign-in reset for {user.email}: they'll set it up again next time they sign in")
+
+
 def add_source(db, args):
     user = _user(db, args.email)
     if args.type == "uk-property" and any(s.type == "uk-property" for s in user.sources):
@@ -107,6 +115,10 @@ def main(argv=None):
     p = sub.add_parser("set-password")
     p.add_argument("--email", required=True)
     p.set_defaults(func=set_password)
+
+    p = sub.add_parser("reset-mfa", help="For a lost phone: set up two-step sign-in again")
+    p.add_argument("--email", required=True)
+    p.set_defaults(func=reset_mfa)
 
     p = sub.add_parser("add-source")
     p.add_argument("--email", required=True)
