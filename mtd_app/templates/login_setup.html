@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Set up two-step sign-in · MTD records{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 420px; margin: 40px auto;">
+  <h1>Set up two-step sign-in</h1>
+  <p>HMRC requires a second step when you sign in. Scan this with an authenticator app such as Google Authenticator or Microsoft Authenticator, then enter the code it shows.</p>
+  <div style="text-align: center;">{{ qr | safe }}</div>
+  <details><summary>Can't scan it?</summary>
+    <p class="muted">Add an account in your app and type in this key:</p>
+    <p><code style="word-break: break-all;">{{ secret }}</code></p></details>
+  <form method="post" action="/login/setup" style="margin-top: 12px;">
+    <p><label for="code">Code from your app</label><input id="code" name="code" inputmode="numeric" pattern="[0-9 ]{6,7}" autocomplete="one-time-code" required></p>
+    <button type="submit">Finish</button>
+  </form>
+</div>
+{% endblock %}

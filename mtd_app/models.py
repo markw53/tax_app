@@ -19,6 +19,10 @@ class User(Base):
     # Elected to use calendar quarters (to 30 Jun, 30 Sep, 31 Dec) for updates
     calendar_quarters: Mapped[bool] = mapped_column(default=False)
     nino: Mapped[str | None] = mapped_column(String(9))
+    # Authenticator app secret (encrypted), and the last code's time step so
+    # a code can't be used twice
+    totp_secret: Mapped[str | None] = mapped_column(String(500))
+    totp_last_step: Mapped[int | None]
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     sources: Mapped[list["IncomeSource"]] = relationship(back_populates="user")

@@ -26,3 +26,26 @@ def session_factory():
 def session(session_factory):
     with session_factory() as s:
         yield s
+
+
+# Authenticator secret shared by the test users
+TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+
+
+def totp_secret():
+    from mtd_app.hmrc_config import encrypt
+    return encrypt(TOTP_SECRET)
+
+
+def sign_in(client, email, password):
+    """Password, then the authenticator code. A code can only be used once,
+    so if this user already signed in this time step, use the next one."""
+    from mtd_app import mfa
+    r = client.post("/login", data={"email": email, "password": password}, follow_redirects=False)
+    assert r.headers["location"] == "/login/code"
+    step = mfa.current_step()
+    for s in (step, step + 1):
+        r = client.post("/login/code", data={"code": mfa.code_at(TOTP_SECRET, s)}, follow_redirects=False)
+        if r.headers["location"] == "/":
+            return r
+    raise AssertionError("authenticator code rejected")

@@ -32,7 +32,9 @@ python3 -m venv .venv
 .venv/bin/uvicorn mtd_app.main:app      # then open http://localhost:8000
 ```
 
-Run `python -m mtd_app.cli --help` for the other commands (`set-password`, `list`). After changing `mtd_app/models.py`, create a migration with `alembic revision --autogenerate -m "..."`.
+Signing in takes a password and a code from an authenticator app (Google Authenticator, Microsoft Authenticator and so on), which HMRC requires; each user scans a QR code the first time. If someone loses their phone, `python -m mtd_app.cli reset-mfa --email ...` makes them set it up again.
+
+Run `python -m mtd_app.cli --help` for the other commands (`set-password`, `reset-mfa`, `list`). After changing `mtd_app/models.py`, create a migration with `alembic revision --autogenerate -m "..."`.
 
 **Connecting to HMRC** (sandbox for now): put your Developer Hub application's credentials in `.env.hmrc` (gitignored), restart, and open the **HMRC** page:
 
