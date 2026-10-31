@@ -164,6 +164,7 @@ def test_fraud_headers_from_browser_and_request():
         "Gov-Client-User-IDs": "mtd-records=7",
         "Gov-Vendor-Product-Name": "MTD%20records",
         "Gov-Vendor-Version": "mtd-records=0.3.0",
+        "Gov-Vendor-License-IDs": "mtd-records=" + fraud_headers.licence_id(7),
         "Gov-Client-Browser-JS-User-Agent": "Mozilla/5.0 (X11)",
         "Gov-Client-Device-ID": "beec798b-b366-47fa-b1f8-92cede14a1ce",
         "Gov-Client-Timezone": "UTC+01:00",
@@ -181,7 +182,14 @@ def test_fraud_headers_from_browser_and_request():
 def test_private_and_documentation_ips_are_left_out():
     h = fraud_headers.build(_request(client=("192.168.1.10", 5000)), 1, CONFIG)
     assert "Gov-Client-Public-IP" not in h and "Gov-Client-Public-Port" not in h
+    assert "Gov-Client-Public-IP-Timestamp" in h
     assert {"Gov-Client-Public-IP", "Gov-Client-Device-ID"} <= set(fraud_headers.missing(h))
+
+
+def test_licence_id_is_stable_per_user_and_hides_the_id():
+    assert fraud_headers.licence_id(1) == fraud_headers.licence_id(1)
+    assert fraud_headers.licence_id(1) != fraud_headers.licence_id(2)
+    assert len(fraud_headers.licence_id(1)) == 64
 
 
 def test_garbage_cookie_ignored():

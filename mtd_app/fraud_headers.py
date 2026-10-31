@@ -4,6 +4,8 @@ Browser details are collected by the script in base.html into the
 mtd_client cookie; network details come from the request. Headers we can't
 collect are left out rather than faked, as HMRC requires.
 """
+import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -12,6 +14,7 @@ from urllib.parse import quote, unquote
 
 from fastapi import Request
 
+from .db import secret_key
 from .hmrc_config import PRODUCT_NAME, PRODUCT_VERSION, HmrcConfig
 
 CLIENT_COOKIE = "mtd_client"
@@ -46,6 +49,12 @@ def client_address(request: Request) -> tuple[str | None, int | None]:
     return None, None
 
 
+def licence_id(user_id: int) -> str:
+    """The app has no licence keys, so each user's licence is a keyed hash
+    of their user ID: stable for this installation, and not reversible."""
+    return hmac.new(secret_key().encode(), f"licence:{user_id}".encode(), hashlib.sha256).hexdigest()
+
+
 def browser_data(request: Request) -> dict:
     raw = request.cookies.get(CLIENT_COOKIE)
     if not raw:
@@ -66,6 +75,11 @@ def build(request: Request, user_id: int, config: HmrcConfig,
         "Gov-Client-User-IDs": _pairs(**{APP_KEY: user_id}),
         "Gov-Vendor-Product-Name": _enc(PRODUCT_NAME),
         "Gov-Vendor-Version": _pairs(**{APP_KEY: PRODUCT_VERSION}),
+        "Gov-Vendor-License-IDs": _pairs(**{APP_KEY: licence_id(user_id)}),
+        # When the public IP was looked up, which is now, even if it turned
+        # out to be private and isn't sent
+        "Gov-Client-Public-IP-Timestamp": (
+            now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"),
     }
 
     if isinstance(data.get("ua"), str) and data["ua"]:
@@ -87,8 +101,6 @@ def build(request: Request, user_id: int, config: HmrcConfig,
     client_ip, client_port = client_address(request)
     if client_ip:
         headers["Gov-Client-Public-IP"] = client_ip
-        headers["Gov-Client-Public-IP-Timestamp"] = (
-            now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z")
         if client_port:
             headers["Gov-Client-Public-Port"] = str(client_port)
 
@@ -104,7 +116,8 @@ REQUIRED = [
     "Gov-Client-Connection-Method", "Gov-Client-Browser-JS-User-Agent", "Gov-Client-Device-ID",
     "Gov-Client-Public-IP", "Gov-Client-Public-IP-Timestamp", "Gov-Client-Public-Port",
     "Gov-Client-Screens", "Gov-Client-Timezone", "Gov-Client-User-IDs", "Gov-Client-Window-Size",
-    "Gov-Vendor-Forwarded", "Gov-Vendor-Product-Name", "Gov-Vendor-Public-IP", "Gov-Vendor-Version",
+    "Gov-Vendor-Forwarded", "Gov-Vendor-License-IDs", "Gov-Vendor-Product-Name", "Gov-Vendor-Public-IP",
+    "Gov-Vendor-Version",
 ]
 
 
