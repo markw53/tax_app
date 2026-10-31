@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Review update · MTD records{% endblock %}
+{% block content %}
+<h1>Review update: {{ source.name }}</h1>
+<p class="muted">Totals for {{ period_start.strftime("%-d %b %Y") }} to {{ period_end.strftime("%-d %b %Y") }}. Updates are cumulative, so this covers the whole tax year so far and replaces anything sent before.</p>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Category</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for kind, label, value in lines %}
+      <tr><td>{% if kind == "expense" %}<span class="muted">Expense:</span> {% endif %}{{ label }}</td>
+        <td class="num">{{ (value * 100)|round|int|money }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if source.type == "uk-property" %}<p class="muted">These are your share of each property.</p>{% endif %}
+  <details style="margin-top: 12px;"><summary>Exactly what will be sent</summary><pre>{{ body }}</pre></details>
+</div>
+
+<form method="post" action="/hmrc/update/{{ source.id }}" class="grid" style="max-width: 420px;">
+  <input type="hidden" name="year" value="{{ year }}">
+  <input type="hidden" name="end" value="{{ period_end.isoformat() }}">
+  <a href="/hmrc?year={{ year }}" style="align-self: center;">Cancel</a>
+  <button type="submit">Send to HMRC</button>
+</form>
+{% endblock %}

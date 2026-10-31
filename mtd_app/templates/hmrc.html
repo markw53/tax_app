@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}HMRC · MTD records{% endblock %}
+{% block content %}
+<div class="row">
+  <div><h1>HMRC</h1>
+    <span class="muted">{% if configured %}{{ "Sandbox (test)" if env == "sandbox" else "Live" }} connection{% else %}Not set up{% endif %}</span></div>
+  <form method="get">
+    <label for="year" class="muted">Tax year</label>
+    <input id="year" name="year" value="{{ year }}" style="width: 7em;" pattern="\d{4}/\d{2}">
+  </form>
+</div>
+
+{% if not configured %}
+<div class="card">
+  <p>To connect to HMRC, create a <code>.env.hmrc</code> file in the project folder with your Developer Hub application's credentials, then restart the app:</p>
+  <pre>HMRC_CLIENT_ID=...
+HMRC_CLIENT_SECRET=...
+HMRC_ENV=sandbox</pre>
+</div>
+{% else %}
+
+<div class="card">
+  <h2>1. Your details</h2>
+  <form method="post" action="/hmrc/nino" class="grid">
+    <div><label for="nino">National Insurance number</label>
+      <input id="nino" name="nino" value="{{ user.nino or '' }}" placeholder="AB123456C" autocomplete="off" required></div>
+    <div><button type="submit">Save</button></div>
+  </form>
+  {% if env == "sandbox" %}<p class="muted" style="margin-bottom: 0;">In the sandbox, use the NINO of an HMRC test user, not your real one.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2>2. Connect</h2>
+  {% if user.hmrc and user.hmrc.env == env %}
+  <p>Connected since {{ user.hmrc.connected_at.strftime("%-d %b %Y") }}.</p>
+  <form method="post" action="/hmrc/disconnect" class="inline"><button class="link" type="submit">Disconnect</button></form>
+  {% else %}
+  <p>You'll sign in on HMRC's website{% if env == "sandbox" %} with a test user's Government Gateway ID{% endif %} and grant this app access to your Self Assessment.</p>
+  <a href="/hmrc/connect"><button type="button" style="width: auto;">Connect to HMRC</button></a>
+  {% endif %}
+</div>
+
+<div class="card" id="links">
+  <h2>3. Link your businesses</h2>
+  <form method="post" action="/hmrc/businesses" style="margin-bottom: 12px;">
+    <button type="submit" style="width: auto;">Fetch my businesses from HMRC</button>
+  </form>
+  <table>
+    <thead><tr><th>In this app</th><th>HMRC business</th></tr></thead>
+    <tbody>
+    {% for s in user.sources %}
+      <tr><td>{{ s.name }} <span class="muted">({{ s.type }})</span></td>
+        <td>
+          {% set options = businesses | selectattr("type", "equalto", s.type) | list %}
+          {% if options %}
+          <form method="post" action="/hmrc/link" class="grid" style="grid-template-columns: 1fr auto;">
+            <input type="hidden" name="source_id" value="{{ s.id }}">
+            <select name="business_id">
+              <option value="">Not linked</option>
+              {% for b in options %}<option value="{{ b.id }}" {% if b.id == s.hmrc_business_id or (not s.hmrc_business_id and options|length == 1) %}selected{% endif %}>{{ b.name or b.type }} · {{ b.id }}</option>{% endfor %}
+            </select>
+            <button type="submit">Save</button>
+          </form>
+          {% else %}{{ s.hmrc_business_id or "Not linked" }}{% endif %}
+        </td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>4. Quarterly updates for {{ year }}</h2>
+  {% if obligations_error %}<div class="flash error">{{ obligations_error }}</div>{% endif %}
+  {% if obligations %}
+  <table>
+    <thead><tr><th>Business</th><th>Period</th><th>Due</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for o in obligations %}
+      <tr>
+        <td>{{ o.source.name }}</td>
+        <td style="white-space: nowrap;">{{ o.quarter.start.strftime("%-d %b") }} – {{ o.quarter.end.strftime("%-d %b %Y") }}</td>
+        <td style="white-space: nowrap;" {% if o.ended and not o.sent and o.hmrc_status != "fulfilled" %}class="due"{% endif %}>{{ o.due.strftime("%-d %b %Y") }}</td>
+        <td>{% if o.hmrc_status == "fulfilled" %}Received by HMRC{% elif o.sent %}Sent {{ o.sent.submitted_at.strftime("%-d %b") }}{% elif not o.ended %}<span class="muted">Not ended yet</span>{% else %}Not sent{% endif %}</td>
+        <td>{% if o.ended %}<a href="/hmrc/update/{{ o.source.id }}?year={{ year }}&end={{ o.quarter.end.isoformat() }}">{{ "Resend" if o.sent or o.hmrc_status == "fulfilled" else "Review and send" }}</a>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif user.hmrc and user.nino %}
+  <p class="muted">Link your businesses above to see and send their quarterly updates.</p>
+  {% else %}
+  <p class="muted">Connect and add your National Insurance number to see your deadlines.</p>
+  {% endif %}
+  {% if user.hmrc and user.nino %}
+  <form method="post" action="/hmrc/calculation" style="margin-top: 12px;">
+    <input type="hidden" name="year" value="{{ year }}">
+    <button type="submit" style="width: auto;">Get HMRC's tax calculation for {{ year }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Sent to HMRC</h2>
+  {% if submissions %}
+  <table>
+    <thead><tr><th>When</th><th>Business</th><th>Period to</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for s in submissions %}
+      <tr><td style="white-space: nowrap;">{{ s.submitted_at.strftime("%-d %b %Y %H:%M") }}</td>
+        <td>{{ s.source.name }}{% if s.env != env %} <span class="muted">({{ s.env }})</span>{% endif %}</td>
+        <td>{{ s.period_end.strftime("%-d %b %Y") }}</td>
+        <td>{% if s.succeeded %}Accepted{% else %}<span class="due">Rejected</span> <span class="muted">{{ s.error }}</span>{% endif %}
+          <details><summary>What was sent</summary><pre>{{ s.payload }}</pre>
+            {% if s.correlation_id %}<p class="muted">HMRC reference: {{ s.correlation_id }}</p>{% endif %}</details></td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">Nothing sent yet.</p>{% endif %}
+</div>
+
+<div class="card" id="headers">
+  <h2>Fraud prevention headers</h2>
+  <p class="muted">HMRC requires details of your device and connection with every request. This is what would be sent now.</p>
+  <details><summary>{{ fraud_sent|length }} headers sent{% if fraud_missing %}, {{ fraud_missing|length }} missing{% endif %}</summary>
+    <table>
+      {% for k, v in fraud_sent.items() %}<tr><td><code>{{ k }}</code></td><td style="word-break: break-all;">{{ v }}</td></tr>{% endfor %}
+      {% for k in fraud_missing %}<tr><td><code>{{ k }}</code></td><td class="muted">not available</td></tr>{% endfor %}
+    </table>
+    {% if fraud_missing %}<p class="muted">Public IP headers are only available once the app is reached over the internet rather than on this computer.</p>{% endif %}
+  </details>
+  {% if env == "sandbox" and user.hmrc %}
+  <form method="post" action="/hmrc/fraud-check" style="margin-top: 12px;"><button type="submit" style="width: auto;">Check headers with HMRC</button></form>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

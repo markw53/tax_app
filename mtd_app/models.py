@@ -2,7 +2,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func,
+    CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,10 +18,12 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     # Elected to use calendar quarters (to 30 Jun, 30 Sep, 31 Dec) for updates
     calendar_quarters: Mapped[bool] = mapped_column(default=False)
+    nino: Mapped[str | None] = mapped_column(String(9))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     sources: Mapped[list["IncomeSource"]] = relationship(back_populates="user")
     property_shares: Mapped[list["PropertyOwner"]] = relationship(back_populates="user")
+    hmrc: Mapped["HmrcConnection | None"] = relationship(back_populates="user")
 
 
 class IncomeSource(Base):
@@ -114,3 +116,39 @@ class MileageTrip(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     source: Mapped[IncomeSource] = relationship(back_populates="trips")
+
+
+class HmrcConnection(Base):
+    """A user's HMRC authorisation. Tokens are encrypted (hmrc_config.encrypt)."""
+    __tablename__ = "hmrc_connections"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True)
+    env: Mapped[str] = mapped_column(String(10))
+    access_token: Mapped[str] = mapped_column(String(2000))
+    refresh_token: Mapped[str] = mapped_column(String(2000))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    connected_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="hmrc")
+
+
+class Submission(Base):
+    """Audit trail of every update sent to HMRC, successful or not."""
+    __tablename__ = "submissions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("income_sources.id"), index=True)
+    env: Mapped[str] = mapped_column(String(10))
+    tax_year: Mapped[str] = mapped_column(String(7))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    payload: Mapped[str] = mapped_column(Text)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    error: Mapped[str | None] = mapped_column(Text)
+    succeeded: Mapped[bool] = mapped_column(default=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    source: Mapped[IncomeSource] = relationship()

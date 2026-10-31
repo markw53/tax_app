@@ -56,6 +56,7 @@
 {% if user %}
 <header><div class="wrap">
   <a class="home" href="/">MTD records</a>
+  <a href="/hmrc">HMRC</a>
   <span class="muted">{{ user.name }}</span>
   <form class="inline" method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
 </div></header>
@@ -64,5 +65,35 @@
   {% for kind, message in flashes %}<div class="flash {{ kind }}">{{ message }}</div>{% endfor %}
   {% block content %}{% endblock %}
 </main>
+<script>
+// Browser details for HMRC's fraud prevention headers (see fraud_headers.py)
+(function () {
+  function deviceId() {
+    var id = null;
+    try { id = localStorage.getItem("mtd_device"); } catch (e) {}
+    if (!id) { var m = document.cookie.match(/(?:^|; )mtd_device=([^;]+)/); id = m && m[1]; }
+    if (!id) {
+      var b = crypto.getRandomValues(new Uint8Array(16));
+      b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+      var h = Array.from(b, function (x) { return x.toString(16).padStart(2, "0"); }).join("");
+      id = [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20)].join("-");
+    }
+    try { localStorage.setItem("mtd_device", id); } catch (e) {}
+    document.cookie = "mtd_device=" + id + "; path=/; max-age=63072000; SameSite=Lax";
+    return id;
+  }
+  function record() {
+    var off = -new Date().getTimezoneOffset(), a = Math.abs(off);
+    var tz = "UTC" + (off >= 0 ? "+" : "-") + String(Math.floor(a / 60)).padStart(2, "0") + ":" + String(a % 60).padStart(2, "0");
+    var data = {
+      ua: navigator.userAgent, device: deviceId(), tz: tz,
+      screens: [{ w: screen.width, h: screen.height, s: window.devicePixelRatio || 1, d: screen.colorDepth }],
+      win: { w: window.innerWidth, h: window.innerHeight }
+    };
+    document.cookie = "mtd_client=" + encodeURIComponent(JSON.stringify(data)) + "; path=/; SameSite=Lax";
+  }
+  try { record(); document.addEventListener("submit", record, true); } catch (e) {}
+})();
+</script>
 </body>
 </html>

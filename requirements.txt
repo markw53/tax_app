@@ -12,3 +12,5 @@ jinja2
 python-multipart
 itsdangerous
 argon2-cffi
+cryptography
+httpx
