@@ -332,3 +332,31 @@ def test_other_users_source_not_accessible(env, session_factory):
     c = TestClient(app)
     c.post("/login", data={"email": "b@example.com", "password": PASSWORD}, follow_redirects=False)
     assert c.get(f"/hmrc/update/{env['source']}?year=2026/27&end=2026-07-05").status_code == 404
+
+
+def test_sandbox_scenario_header_only_on_business_details(env, hmrc):
+    c = logged_in()
+    connect(c)
+    c.post("/hmrc/nino", data={"nino": NINO})
+    c.post("/hmrc/businesses")
+    c.post("/hmrc/calculation", data={"year": "2026/27"})
+    details = next(r for r in hmrc.requests if r.url.path.endswith("/list"))
+    trigger = next(r for r in hmrc.requests if "/trigger/" in r.url.path)
+    assert details.headers["Gov-Test-Scenario"] == "STATEFUL"
+    assert "Gov-Test-Scenario" not in trigger.headers
+    assert trigger.headers["Accept"] == "application/vnd.hmrc.9.0+json"
+
+
+def test_quarters_listed_even_when_hmrc_has_no_obligation(env, session_factory, hmrc):
+    c = logged_in()
+    connect(c)
+    c.post("/hmrc/nino", data={"nino": NINO})
+    with session_factory() as s:
+        s.get(IncomeSource, env["source"]).hmrc_business_id = "XNOTLISTED00001"
+        s.commit()
+    page = c.get("/hmrc?year=2026/27").text
+    assert page.count("Delivery driving") >= 4
+    assert f"/hmrc/update/{env['source']}?year=2026/27&end=2026-07-05" in page
+
+    c.post(f"/hmrc/update/{env['source']}", data={"year": "2026/27", "end": "2026-07-05"})
+    assert "Sent " in c.get("/hmrc?year=2026/27").text

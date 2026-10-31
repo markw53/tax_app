@@ -77,17 +77,17 @@ HMRC_ENV=sandbox</pre>
     <tbody>
     {% for o in obligations %}
       <tr>
-        <td>{{ o.source.name if o.source else o.business_id }}</td>
-        <td style="white-space: nowrap;">{{ o.start.strftime("%-d %b") }} – {{ o.end.strftime("%-d %b %Y") }}</td>
-        <td style="white-space: nowrap;">{{ o.due.strftime("%-d %b %Y") }}</td>
-        <td>{{ "Received" if o.status == "fulfilled" else "Open" }}</td>
-        <td>{% if o.source %}<a href="/hmrc/update/{{ o.source.id }}?year={{ year }}&end={{ o.end.isoformat() }}">{{ "Resend" if o.status == "fulfilled" else "Review and send" }}</a>{% else %}<span class="muted">Link first</span>{% endif %}</td>
+        <td>{{ o.source.name }}</td>
+        <td style="white-space: nowrap;">{{ o.quarter.start.strftime("%-d %b") }} – {{ o.quarter.end.strftime("%-d %b %Y") }}</td>
+        <td style="white-space: nowrap;" {% if o.ended and not o.sent and o.hmrc_status != "fulfilled" %}class="due"{% endif %}>{{ o.due.strftime("%-d %b %Y") }}</td>
+        <td>{% if o.hmrc_status == "fulfilled" %}Received by HMRC{% elif o.sent %}Sent {{ o.sent.submitted_at.strftime("%-d %b") }}{% elif not o.ended %}<span class="muted">Not ended yet</span>{% else %}Not sent{% endif %}</td>
+        <td>{% if o.ended %}<a href="/hmrc/update/{{ o.source.id }}?year={{ year }}&end={{ o.quarter.end.isoformat() }}">{{ "Resend" if o.sent or o.hmrc_status == "fulfilled" else "Review and send" }}</a>{% endif %}</td>
       </tr>
     {% endfor %}
     </tbody>
   </table>
   {% elif user.hmrc and user.nino %}
-  <p class="muted">HMRC has no quarterly updates listed for you in {{ year }}.</p>
+  <p class="muted">Link your businesses above to see and send their quarterly updates.</p>
   {% else %}
   <p class="muted">Connect and add your National Insurance number to see your deadlines.</p>
   {% endif %}

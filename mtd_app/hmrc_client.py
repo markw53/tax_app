@@ -13,9 +13,13 @@ VERSIONS = {
     "obligations": "3.0",
     "self-employment": "5.0",
     "property": "6.0",
-    "calculations": "8.0",
+    "calculations": "9.0",
     "fraud-test": "1.0",
 }
+
+# The sandbox only returns test data created through the test-support APIs
+# when asked for it with this header.
+SANDBOX_SCENARIOS = {"business-details": "STATEFUL"}
 
 
 class HmrcError(Exception):
@@ -88,6 +92,8 @@ class HmrcClient:
             "Authorization": f"Bearer {token}",
             **fraud,
         }
+        if self.config.env == "sandbox" and api in SANDBOX_SCENARIOS:
+            headers["Gov-Test-Scenario"] = SANDBOX_SCENARIOS[api]
         resp = self.http.request(method, self.config.api_base + path, headers=headers,
                                  json=json, params=params)
         if resp.status_code >= 400:

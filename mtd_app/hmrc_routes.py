@@ -10,7 +10,7 @@ from . import categories, fraud_headers, hmrc_service
 from .hmrc_client import HmrcClient, HmrcError
 from .hmrc_config import load_config, new_state
 from .models import IncomeSource, Submission
-from .periods import tax_year_bounds, tax_year_of
+from .periods import quarters, tax_year_bounds, tax_year_of
 from .web import DB, CurrentUser, flash, redirect, render
 
 router = APIRouter(prefix="/hmrc")
@@ -51,6 +51,7 @@ def hmrc_home(request: Request, db: DB, user: CurrentUser, client: Client, year:
     year = _year(year)
     ctx = {"user": user, "year": year, "configured": client is not None, "obligations": [],
            "businesses": request.session.get("hmrc_businesses", [])}
+    hmrc_obligations: list[dict] = []
     if client:
         ctx["env"] = client.config.env
         headers = fraud_headers.build(request, user.id, client.config)
@@ -59,35 +60,48 @@ def hmrc_home(request: Request, db: DB, user: CurrentUser, client: Client, year:
             try:
                 token = hmrc_service.access_token(db, user, client)
                 start, end = tax_year_bounds(year)
-                ctx["obligations"] = _obligation_rows(
-                    user, client.obligations(token, headers, user.nino, start, end))
+                hmrc_obligations = client.obligations(token, headers, user.nino, start, end)
             except hmrc_service.NotConnected as e:
                 flash(request, str(e), "error")
             except HmrcError as e:
                 ctx["obligations_error"] = e.describe()
 
-    ctx["submissions"] = (db.query(Submission).filter(Submission.user_id == user.id)
-                          .order_by(Submission.id.desc()).limit(20).all())
+    submissions = (db.query(Submission).filter(Submission.user_id == user.id)
+                   .order_by(Submission.id.desc()).all())
+    ctx["obligations"] = _update_rows(user, year, hmrc_obligations, submissions)
+    ctx["submissions"] = submissions[:20]
     return render(request, "hmrc.html", **ctx)
 
 
-def _obligation_rows(user, obligations: list[dict]) -> list[dict]:
-    by_id = {s.hmrc_business_id: s for s in user.sources if s.hmrc_business_id}
-    rows = []
+def _update_rows(user, year: str, obligations: list[dict], submissions: list[Submission]) -> list[dict]:
+    """One row per linked source per quarter of the year, with HMRC's
+    status where its obligations list has a matching period. Our own
+    quarters are the backbone so updates can still be sent if HMRC's list
+    is late or incomplete (as it always is in the sandbox)."""
+    hmrc_status = {}
     for ob in obligations:
-        source = by_id.get(ob.get("businessId"))
         for d in ob.get("obligationDetails", []):
+            hmrc_status[(ob.get("businessId"), d.get("periodEndDate"))] = d
+    last_sent = {}
+    for s in submissions:  # newest first
+        if s.succeeded:
+            last_sent.setdefault((s.source_id, s.period_end), s)
+
+    rows = []
+    today = date.today()
+    for source in sorted(user.sources, key=lambda s: (s.type, s.name)):
+        if not source.hmrc_business_id:
+            continue
+        for q in quarters(year, calendar=user.calendar_quarters):
+            hmrc = hmrc_status.get((source.hmrc_business_id, q.end.isoformat()))
             rows.append({
-                "source": source,
-                "business_id": ob.get("businessId"),
-                "type": ob.get("typeOfBusiness"),
-                "start": date.fromisoformat(d["periodStartDate"]),
-                "end": date.fromisoformat(d["periodEndDate"]),
-                "due": date.fromisoformat(d["dueDate"]),
-                "status": d.get("status"),
-                "received": d.get("receivedDate"),
+                "source": source, "quarter": q,
+                "due": date.fromisoformat(hmrc["dueDate"]) if hmrc else q.deadline,
+                "hmrc_status": hmrc.get("status") if hmrc else None,
+                "sent": last_sent.get((source.id, q.end)),
+                "ended": q.end < today,
             })
-    return sorted(rows, key=lambda r: (r["end"], r["type"] or ""))
+    return rows
 
 
 @router.post("/nino")
