@@ -1,8 +1,17 @@
 """Digital records. Money is stored as integer pence."""
+
 from datetime import date, datetime
 
 from sqlalchemy import (
-    CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func,
+    CheckConstraint,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,10 +41,13 @@ class User(Base):
 
 class IncomeSource(Base):
     """An HMRC 'business': a sole trade, or the person's UK property business."""
+
     __tablename__ = "income_sources"
     __table_args__ = (
         CheckConstraint("type IN ('self-employment', 'uk-property')"),
-        CheckConstraint("vehicle_method IS NULL OR vehicle_method IN ('actual', 'simplified')"),
+        CheckConstraint(
+            "vehicle_method IS NULL OR vehicle_method IN ('actual', 'simplified')"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -64,6 +76,7 @@ class Property(Base):
 class PropertyOwner(Base):
     """Each owner reports their share of a property's income and expenses.
     Spouses default to 50/50 unless they've sent HMRC a Form 17."""
+
     __tablename__ = "property_owners"
     __table_args__ = (
         UniqueConstraint("property_id", "user_id"),
@@ -82,6 +95,7 @@ class PropertyOwner(Base):
 class Transaction(Base):
     """A self-employment transaction belongs to a source; a property
     transaction belongs to a property and is split between its owners."""
+
     __tablename__ = "transactions"
     __table_args__ = (
         CheckConstraint("kind IN ('income', 'expense')"),
@@ -95,8 +109,12 @@ class Transaction(Base):
     category: Mapped[str] = mapped_column(String(40))
     amount_pence: Mapped[int] = mapped_column(Integer)
     description: Mapped[str] = mapped_column(String(255), default="")
-    source_id: Mapped[int | None] = mapped_column(ForeignKey("income_sources.id"), index=True)
-    property_id: Mapped[int | None] = mapped_column(ForeignKey("properties.id"), index=True)
+    source_id: Mapped[int | None] = mapped_column(
+        ForeignKey("income_sources.id"), index=True
+    )
+    property_id: Mapped[int | None] = mapped_column(
+        ForeignKey("properties.id"), index=True
+    )
     created_by_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
@@ -124,6 +142,7 @@ class MileageTrip(Base):
 
 class HmrcConnection(Base):
     """A user's HMRC authorisation. Tokens are encrypted (hmrc_config.encrypt)."""
+
     __tablename__ = "hmrc_connections"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -139,6 +158,7 @@ class HmrcConnection(Base):
 
 class Submission(Base):
     """Audit trail of every update sent to HMRC, successful or not."""
+
     __tablename__ = "submissions"
 
     id: Mapped[int] = mapped_column(primary_key=True)

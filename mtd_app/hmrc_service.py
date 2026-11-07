@@ -1,6 +1,6 @@
 """HMRC operations that touch the database: tokens, links and submissions."""
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -19,7 +19,7 @@ class NotConnected(Exception):
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def store_tokens(db: Session, user: User, env: str, tokens: dict) -> HmrcConnection:

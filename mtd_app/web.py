@@ -27,7 +27,10 @@ def get_db():
         yield session
 
 
-def current_user(request: Request, db: Session = Depends(get_db)) -> User:
+DB = Annotated[Session, Depends(get_db)]
+
+
+def current_user(request: Request, db: DB) -> User:
     user_id = request.session.get("user_id")
     # Sessions from before two-step sign-in have no "mfa" and must sign in again
     user = db.get(User, user_id) if user_id and request.session.get("mfa") else None
@@ -36,7 +39,6 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     return user
 
 
-DB = Annotated[Session, Depends(get_db)]
 CurrentUser = Annotated[User, Depends(current_user)]
 
 

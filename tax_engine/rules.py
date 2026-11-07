@@ -1,18 +1,22 @@
 """Tax-year parameters for UK (rest of UK, not Scottish) self-employed taxpayers."""
+
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass(frozen=True)
 class TaxYearRules:
     # Income tax
     personal_allowance: float
-    basic_rate_band: float            # width of the basic-rate band (on taxable income)
-    additional_rate_threshold: float  # taxable income above which additional rate applies
+    basic_rate_band: float  # width of the basic-rate band (on taxable income)
+    additional_rate_threshold: (
+        float  # taxable income above which additional rate applies
+    )
     basic_rate: float
     higher_rate: float
     additional_rate: float
-    allowance_taper_threshold: float  # PA reduced by £1 for every £2 of income above this
+    allowance_taper_threshold: (
+        float  # PA reduced by £1 for every £2 of income above this
+    )
 
     # Class 4 NI
     class4_lower_limit: float
@@ -21,7 +25,7 @@ class TaxYearRules:
     class4_upper_rate: float
 
     # Class 2 NI: None from 2024/25, when compulsory Class 2 was abolished
-    class2_weekly: Optional[float] = None
+    class2_weekly: float | None = None
 
 
 TAX_YEARS = {

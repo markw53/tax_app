@@ -4,12 +4,13 @@ Browser details are collected by the script in base.html into the
 mtd_client cookie; network details come from the request. Headers we can't
 collect are left out rather than faked, as HMRC requires.
 """
+
 import hashlib
 import hmac
 import ipaddress
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote, unquote
 
 from fastapi import Request
@@ -52,7 +53,9 @@ def client_address(request: Request) -> tuple[str | None, int | None]:
 def licence_id(user_id: int) -> str:
     """The app has no licence keys, so each user's licence is a keyed hash
     of their user ID: stable for this installation, and not reversible."""
-    return hmac.new(secret_key().encode(), f"licence:{user_id}".encode(), hashlib.sha256).hexdigest()
+    return hmac.new(
+        secret_key().encode(), f"licence:{user_id}".encode(), hashlib.sha256
+    ).hexdigest()
 
 
 def browser_data(request: Request) -> dict:
@@ -66,9 +69,10 @@ def browser_data(request: Request) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def build(request: Request, user_id: int, config: HmrcConfig,
-          now: datetime | None = None) -> dict[str, str]:
-    now = now or datetime.now(timezone.utc)
+def build(
+    request: Request, user_id: int, config: HmrcConfig, now: datetime | None = None
+) -> dict[str, str]:
+    now = now or datetime.now(UTC)
     data = browser_data(request)
     headers = {
         "Gov-Client-Connection-Method": "WEB_APP_VIA_SERVER",
@@ -79,14 +83,19 @@ def build(request: Request, user_id: int, config: HmrcConfig,
         # When the public IP was looked up, which is now, even if it turned
         # out to be private and isn't sent
         "Gov-Client-Public-IP-Timestamp": (
-            now.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"),
+            now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.")
+            + f"{now.microsecond // 1000:03d}Z"
+        ),
     }
 
     # Set at sign-in once the authenticator code has been checked
     factor = (request.scope.get("session") or {}).get("mfa")
     if isinstance(factor, dict) and factor.get("type"):
         headers["Gov-Client-Multi-Factor"] = _pairs(
-            type=factor["type"], timestamp=factor.get("at"), unique_reference=factor.get("ref"))
+            type=factor["type"],
+            timestamp=factor.get("at"),
+            unique_reference=factor.get("ref"),
+        )
 
     if isinstance(data.get("ua"), str) and data["ua"]:
         headers["Gov-Client-Browser-JS-User-Agent"] = data["ua"]
@@ -97,9 +106,14 @@ def build(request: Request, user_id: int, config: HmrcConfig,
     screens = [s for s in data.get("screens") or [] if isinstance(s, dict)]
     if screens:
         headers["Gov-Client-Screens"] = ",".join(
-            _pairs(width=s.get("w"), height=s.get("h"),
-                   scaling_factor=s.get("s"), colour_depth=s.get("d"))
-            for s in screens)
+            _pairs(
+                width=s.get("w"),
+                height=s.get("h"),
+                scaling_factor=s.get("s"),
+                colour_depth=s.get("d"),
+            )
+            for s in screens
+        )
     win = data.get("win")
     if isinstance(win, dict) and win.get("w") and win.get("h"):
         headers["Gov-Client-Window-Size"] = _pairs(width=win["w"], height=win["h"])
@@ -114,16 +128,28 @@ def build(request: Request, user_id: int, config: HmrcConfig,
     if vendor_ip:
         headers["Gov-Vendor-Public-IP"] = vendor_ip
         if client_ip:
-            headers["Gov-Vendor-Forwarded"] = _pairs(**{"by": vendor_ip, "for": client_ip})
+            headers["Gov-Vendor-Forwarded"] = _pairs(
+                **{"by": vendor_ip, "for": client_ip}
+            )
     return headers
 
 
 REQUIRED = [
-    "Gov-Client-Connection-Method", "Gov-Client-Browser-JS-User-Agent", "Gov-Client-Device-ID",
+    "Gov-Client-Connection-Method",
+    "Gov-Client-Browser-JS-User-Agent",
+    "Gov-Client-Device-ID",
     "Gov-Client-Multi-Factor",
-    "Gov-Client-Public-IP", "Gov-Client-Public-IP-Timestamp", "Gov-Client-Public-Port",
-    "Gov-Client-Screens", "Gov-Client-Timezone", "Gov-Client-User-IDs", "Gov-Client-Window-Size",
-    "Gov-Vendor-Forwarded", "Gov-Vendor-License-IDs", "Gov-Vendor-Product-Name", "Gov-Vendor-Public-IP",
+    "Gov-Client-Public-IP",
+    "Gov-Client-Public-IP-Timestamp",
+    "Gov-Client-Public-Port",
+    "Gov-Client-Screens",
+    "Gov-Client-Timezone",
+    "Gov-Client-User-IDs",
+    "Gov-Client-Window-Size",
+    "Gov-Vendor-Forwarded",
+    "Gov-Vendor-License-IDs",
+    "Gov-Vendor-Product-Name",
+    "Gov-Vendor-Public-IP",
     "Gov-Vendor-Version",
 ]
 

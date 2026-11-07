@@ -1,6 +1,6 @@
 import re
 import time
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -88,7 +88,7 @@ def _pending_user(request: Request, db: Session) -> User:
     """The user who has given their password but not yet a code."""
     pending = request.session.get("pending")
     user = db.get(User, pending["user_id"]) if pending else None
-    if not user or time.time() - pending["at"] > PENDING_SECONDS:
+    if pending is None or not user or time.time() - pending["at"] > PENDING_SECONDS:
         request.session.pop("pending", None)
         raise LoginRequired()
     return user
@@ -111,7 +111,7 @@ def _check_code(request: Request, db: Session, user: User, secret: str, code: st
     request.session.clear()
     request.session["user_id"] = user.id
     # For HMRC's Gov-Client-Multi-Factor header
-    request.session["mfa"] = {"type": "TOTP", "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%MZ"),
+    request.session["mfa"] = {"type": "TOTP", "at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%MZ"),
                               "ref": mfa.reference(secret)}
     return True
 
@@ -330,6 +330,8 @@ def add_property_transaction(request: Request, db: DB, user: CurrentUser, proper
 def _transaction_owner_url(db: Session, user: User, txn: Transaction) -> str:
     if txn.source_id:
         return f"/sources/{own_source(db, user, txn.source_id).id}"
+    if txn.property_id is None:
+        raise HTTPException(404)
     return f"/properties/{own_property(db, user, txn.property_id).id}"
 
 

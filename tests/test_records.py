@@ -1,13 +1,13 @@
 from datetime import date
 
-import pytest
-
 from mtd_app.models import (
     IncomeSource, MileageTrip, Property, PropertyOwner, Transaction, User,
 )
 from mtd_app.records import (
     mileage_allowance_pence, profit_pence, split_pence, totals_for,
 )
+
+import pytest
 
 YEAR_START, YEAR_END = date(2026, 4, 6), date(2027, 4, 5)
 
