@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Review allowances and adjustments · MTD records{% endblock %}
+{% block content %}
+<h1>Review allowances and adjustments: {{ source.name }}</h1>
+<p class="muted">Tax year {{ year }}. This replaces any allowances and adjustments sent for this business and year before.</p>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Item</th><th class="num">Amount</th></tr></thead>
+    <tbody>
+    {% for label, value in lines %}<tr><td>{{ label }}</td><td class="num">{{ value }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  {% if drops_expenses %}<p class="muted">Because you're claiming the £1,000 allowance, your expenses for {{ year }} won't be sent to HMRC. After sending this, resend your latest quarterly update so HMRC has it without them.</p>{% endif %}
+  <details style="margin-top: 12px;"><summary>Exactly what will be sent</summary><pre>{{ body }}</pre></details>
+</div>
+
+<form method="post" action="/hmrc/annual/{{ source.id }}/send" class="grid" style="max-width: 420px;">
+  <input type="hidden" name="year" value="{{ year }}">
+  <a href="/hmrc/annual/{{ source.id }}?year={{ year }}" style="align-self: center;">Change</a>
+  <button type="submit">Send to HMRC</button>
+</form>
+{% endblock %}

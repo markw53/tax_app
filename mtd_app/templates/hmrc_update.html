@@ -15,6 +15,7 @@
     </tbody>
   </table>
   {% if source.type == "uk-property" %}<p class="muted">These are your share of each property.</p>{% endif %}
+  {% if drops_expenses %}<p class="muted">Expenses are left out because you're claiming the £1,000 {{ "trading" if source.type == "self-employment" else "property" }} allowance for {{ year }} instead.</p>{% endif %}
   <details style="margin-top: 12px;"><summary>Exactly what will be sent</summary><pre>{{ body }}</pre></details>
 </div>
 

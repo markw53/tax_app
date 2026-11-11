@@ -6,11 +6,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from . import categories, fraud_headers, hmrc_service
+from . import annual, categories, fraud_headers, hmrc_service
 from .hmrc_client import HmrcClient, HmrcError
 from .hmrc_config import load_config, new_state
-from .models import IncomeSource, Submission
+from .models import FinalDeclaration, IncomeSource, Submission
 from .periods import quarters, tax_year_bounds, tax_year_of
+from .records import totals_for
 from .web import DB, CurrentUser, flash, redirect, render
 
 router = APIRouter(prefix="/hmrc")
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/hmrc")
 NINO_RE = re.compile(
     r"^((?!(BG|GB|KN|NK|NT|TN|ZZ)|(D|F|I|Q|U|V)[A-Z]|[A-Z](D|F|I|O|Q|U|V))[A-Z]{2})[0-9]{6}[A-D]$")
 YEAR_RE = re.compile(r"^\d{4}/\d{2}$")
+CALC_ID_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 
 
 def get_hmrc_client() -> HmrcClient | None:
@@ -69,6 +71,7 @@ def hmrc_home(request: Request, db: DB, user: CurrentUser, client: Client, year:
     submissions = (db.query(Submission).filter(Submission.user_id == user.id)
                    .order_by(Submission.id.desc()).all())
     ctx["obligations"] = _update_rows(user, year, hmrc_obligations, submissions)
+    ctx["year_end"] = _year_end(db, user, year, submissions, ctx.get("env"))
     ctx["submissions"] = submissions[:20]
     return render(request, "hmrc.html", **ctx)
 
@@ -84,7 +87,7 @@ def _update_rows(user, year: str, obligations: list[dict], submissions: list[Sub
             hmrc_status[(ob.get("businessId"), d.get("periodEndDate"))] = d
     last_sent = {}
     for s in submissions:  # newest first
-        if s.succeeded:
+        if s.succeeded and s.kind == "update":
             last_sent.setdefault((s.source_id, s.period_end), s)
 
     rows = []
@@ -102,6 +105,25 @@ def _update_rows(user, year: str, obligations: list[dict], submissions: list[Sub
                 "ended": q.end < today,
             })
     return rows
+
+
+def _year_end(db, user, year: str, submissions: list[Submission], env: str | None) -> dict:
+    """Where each linked source stands on its end-of-year steps."""
+    sent = {}
+    for s in submissions:  # newest first
+        if s.succeeded and s.kind == "annual" and s.tax_year == year and s.env == env:
+            sent.setdefault(s.source_id, s)
+    rows = [{"source": source, "sent": sent.get(source.id),
+             "entered": bool(hmrc_service.annual_figures(db, source, year))}
+            for source in sorted(user.sources, key=lambda s: (s.type, s.name))
+            if source.hmrc_business_id]
+    declared = (db.query(FinalDeclaration)
+                .filter_by(user_id=user.id, tax_year=year, env=env, succeeded=True)
+                .order_by(FinalDeclaration.id.desc()).first())
+    year_end = tax_year_bounds(year)[1]
+    return {"rows": rows, "declared": declared, "ended": date.today() > year_end,
+            "ends": year_end, "deadline": date(year_end.year + 1, 1, 31),
+            "supported": int(year[:4]) >= annual.FIRST_TAX_YEAR}
 
 
 @router.post("/nino")
@@ -214,6 +236,7 @@ def review_update(request: Request, db: DB, user: CurrentUser, source_id: int, y
         flash(request, str(e), "error")
         return redirect("/hmrc")
     return render(request, "hmrc_update.html", user=user, source=source, year=year,
+                  drops_expenses=hmrc_service.claims_income_allowance(db, source, year),
                   period_start=tax_year_bounds(year)[0], period_end=period_end,
                   lines=_payload_lines(source.type, body), body=json.dumps(body, indent=2))
 
@@ -249,26 +272,40 @@ def send_update(request: Request, db: DB, user: CurrentUser, client: Client, sou
 
 # ---------------------------------------------------------- calculation
 
-@router.post("/calculation")
-def trigger_calculation(request: Request, db: DB, user: CurrentUser, client: Client,
-                        year: Annotated[str, Form()]):
-    client = _require(client)
-    year = _year(year)
+def _start_calculation(request, db, user, client, year: str, calculation_type: str):
     try:
         token = hmrc_service.access_token(db, user, client)
         fraud = fraud_headers.build(request, user.id, client.config)
-        calc_id = client.trigger_calculation(token, fraud, user.nino or "", year)
+        calc_id = client.trigger_calculation(token, fraud, user.nino or "", year, calculation_type)
     except (hmrc_service.NotConnected, HmrcError) as e:
         flash(request, e.describe() if isinstance(e, HmrcError) else str(e), "error")
         return redirect(f"/hmrc?year={year}")
     return redirect(f"/hmrc/calculation?year={year}&id={calc_id}")
 
 
+@router.post("/calculation")
+def trigger_calculation(request: Request, db: DB, user: CurrentUser, client: Client,
+                        year: Annotated[str, Form()]):
+    return _start_calculation(request, db, user, _require(client), _year(year), "in-year")
+
+
+@router.post("/final-calculation")
+def trigger_final_calculation(request: Request, db: DB, user: CurrentUser, client: Client,
+                              year: Annotated[str, Form()]):
+    """Ask HMRC for the final calculation, the first step of the tax return."""
+    client = _require(client)
+    year = _year(year)
+    if date.today() <= tax_year_bounds(year)[1]:
+        flash(request, f"The final calculation for {year} can only be requested after the tax year ends.", "error")
+        return redirect(f"/hmrc?year={year}")
+    return _start_calculation(request, db, user, client, year, "intent-to-finalise")
+
+
 @router.get("/calculation")
 def show_calculation(request: Request, db: DB, user: CurrentUser, client: Client, year: str, id: str):
     client = _require(client)
     year = _year(year)
-    if not re.fullmatch(r"[A-Za-z0-9-]{1,64}", id):
+    if not CALC_ID_RE.fullmatch(id):
         raise HTTPException(400, "Bad calculation ID")
     calc, pending, error = None, False, None
     try:
@@ -281,10 +318,122 @@ def show_calculation(request: Request, db: DB, user: CurrentUser, client: Client
         # HMRC returns 404 until the calculation has finished
         pending = e.status == 404
         error = None if pending else e.describe()
-    tax = (calc or {}).get("calculation", {}).get("taxCalculation", {})
+    calc = calc or {}
+    tax = calc.get("calculation", {}).get("taxCalculation", {})
+    messages = calc.get("messages") or {}
+    declared = (db.query(FinalDeclaration)
+                .filter_by(user_id=user.id, tax_year=year, env=client.config.env, succeeded=True)
+                .order_by(FinalDeclaration.id.desc()).first())
     return render(request, "hmrc_calculation.html", user=user, year=year, calc_id=id,
-                  pending=pending, error=error, tax=tax,
-                  raw=json.dumps(calc, indent=2) if calc else None)
+                  pending=pending, error=error, tax=tax, messages=messages,
+                  final=calc.get("metadata", {}).get("calculationType") == "intent-to-finalise",
+                  declared=declared, raw=json.dumps(calc, indent=2) if calc else None)
+
+
+@router.post("/declaration")
+def final_declaration(request: Request, db: DB, user: CurrentUser, client: Client,
+                      year: Annotated[str, Form()], id: Annotated[str, Form()],
+                      agree: Annotated[str, Form()] = ""):
+    """Agree HMRC's final calculation. This submits the tax return."""
+    client = _require(client)
+    year = _year(year)
+    if not CALC_ID_RE.fullmatch(id):
+        raise HTTPException(400, "Bad calculation ID")
+    back = f"/hmrc/calculation?year={year}&id={id}"
+    if agree != "yes":
+        flash(request, "Tick the box to agree to the declaration before submitting.", "error")
+        return redirect(back)
+    fraud = fraud_headers.build(request, user.id, client.config)
+    try:
+        record = hmrc_service.submit_final_declaration(db, user, year, id, client, fraud)
+    except (ValueError, hmrc_service.NotConnected) as e:
+        flash(request, str(e), "error")
+        return redirect(back)
+    if not record.succeeded:
+        flash(request, f"HMRC didn't accept the declaration: {record.error}", "error")
+        return redirect(back)
+    flash(request, f"HMRC has received your final declaration for {year}. Your tax return for the year is "
+                   "submitted. It can take up to an hour to show as complete in HMRC's records.")
+    return redirect(f"/hmrc?year={year}")
+
+
+# ------------------------------------------ allowances and adjustments
+
+def _annual_source(user, source_id: int, year: str) -> IncomeSource:
+    if not YEAR_RE.fullmatch(year):
+        raise HTTPException(400, "Bad tax year")
+    return _own_source(user, source_id)
+
+
+def _annual_form(request, db, user, source, year: str, values: dict):
+    has_expenses = bool(totals_for(db, source, *tax_year_bounds(year)).total_expenses)
+    return render(request, "hmrc_annual.html", user=user, source=source, year=year,
+                  fields=annual.FIELDS[source.type], values=values, has_expenses=has_expenses,
+                  exemptions=annual.CLASS4_EXEMPTIONS)
+
+
+@router.get("/annual/{source_id}")
+def annual_form(request: Request, db: DB, user: CurrentUser, source_id: int, year: str):
+    source = _annual_source(user, source_id, year)
+    try:
+        annual.check_tax_year(year)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return redirect(f"/hmrc?year={year}")
+    data = hmrc_service.annual_figures(db, source, year)
+    values = {k: f"{v / 100:.2f}" if isinstance(v, int) and not isinstance(v, bool) else v
+              for k, v in data.items()}
+    return _annual_form(request, db, user, source, year, values)
+
+
+@router.post("/annual/{source_id}")
+async def save_annual(request: Request, db: DB, user: CurrentUser, source_id: int):
+    form = await request.form()
+    year = str(form.get("year", ""))
+    source = _annual_source(user, source_id, year)
+    try:
+        annual.check_tax_year(year)
+        data = annual.parse_form(source.type, form)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return _annual_form(request, db, user, source, year, dict(form))
+    hmrc_service.save_annual_figures(db, source, year, data)
+    return redirect(f"/hmrc/annual/{source.id}/review?year={year}")
+
+
+@router.get("/annual/{source_id}/review")
+def review_annual(request: Request, db: DB, user: CurrentUser, source_id: int, year: str):
+    source = _annual_source(user, source_id, year)
+    try:
+        body = hmrc_service.build_annual(db, source, year)
+    except ValueError as e:
+        flash(request, str(e), "error")
+        return redirect(f"/hmrc/annual/{source.id}?year={year}")
+    data = hmrc_service.annual_figures(db, source, year)
+    return render(request, "hmrc_annual_review.html", user=user, source=source, year=year,
+                  lines=annual.lines(source.type, data), body=json.dumps(body, indent=2),
+                  drops_expenses=annual.claims_income_allowance(source.type, data))
+
+
+@router.post("/annual/{source_id}/send")
+def send_annual(request: Request, db: DB, user: CurrentUser, client: Client, source_id: int,
+                year: Annotated[str, Form()]):
+    client = _require(client)
+    source = _annual_source(user, source_id, year)
+    fraud = fraud_headers.build(request, user.id, client.config)
+    try:
+        record = hmrc_service.submit_annual(db, user, source, year, client, fraud)
+    except (ValueError, hmrc_service.NotConnected) as e:
+        flash(request, str(e), "error")
+        return redirect(f"/hmrc?year={year}")
+    if not record.succeeded:
+        flash(request, f"HMRC rejected the allowances and adjustments: {record.error}", "error")
+    else:
+        flash(request, f"HMRC accepted the {year} allowances and adjustments for '{source.name}'.")
+        if hmrc_service.claims_income_allowance(db, source, year):
+            flash(request, "Because you're claiming the £1,000 allowance, resend your latest quarterly "
+                           f"update for '{source.name}' so HMRC has it without expenses.")
+    return redirect(f"/hmrc?year={year}#year-end")
 
 
 # ------------------------------------------------------- fraud headers

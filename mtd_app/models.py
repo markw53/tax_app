@@ -157,7 +157,8 @@ class HmrcConnection(Base):
 
 
 class Submission(Base):
-    """Audit trail of every update sent to HMRC, successful or not."""
+    """Audit trail of every update and annual submission sent to HMRC,
+    successful or not."""
 
     __tablename__ = "submissions"
 
@@ -165,6 +166,8 @@ class Submission(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("income_sources.id"), index=True)
     env: Mapped[str] = mapped_column(String(10))
+    # 'update' (cumulative quarterly update) or 'annual' (allowances and adjustments)
+    kind: Mapped[str] = mapped_column(String(10), default="update", server_default="update")
     tax_year: Mapped[str] = mapped_column(String(7))
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
@@ -176,3 +179,38 @@ class Submission(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     source: Mapped[IncomeSource] = relationship()
+
+
+class AnnualFigures(Base):
+    """A source's end-of-year allowances and adjustments for a tax year, as
+    entered (see annual.py for the fields). Amounts are pence."""
+
+    __tablename__ = "annual_figures"
+    __table_args__ = (UniqueConstraint("source_id", "tax_year"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("income_sources.id"), index=True)
+    tax_year: Mapped[str] = mapped_column(String(7))
+    data: Mapped[str] = mapped_column(Text)  # JSON: field -> pence, bool or string
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(),
+                                                 onupdate=func.now())
+
+    source: Mapped[IncomeSource] = relationship()
+
+
+class FinalDeclaration(Base):
+    """Audit trail of final declarations: the user agreeing HMRC's final
+    calculation for a tax year, which completes their tax return."""
+
+    __tablename__ = "final_declarations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    env: Mapped[str] = mapped_column(String(10))
+    tax_year: Mapped[str] = mapped_column(String(7))
+    calculation_id: Mapped[str] = mapped_column(String(64))
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    correlation_id: Mapped[str | None] = mapped_column(String(100))
+    error: Mapped[str | None] = mapped_column(Text)
+    succeeded: Mapped[bool] = mapped_column(default=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
