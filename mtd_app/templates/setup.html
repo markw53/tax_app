@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Set up · MTD records{% endblock %}
+{% block content %}
+<div class="card" style="max-width: 640px; margin: 40px auto;">
+  <h1>Create the first account</h1>
+  <p class="muted">Nobody has an account yet. Create yours here; you can add other people once you've signed in.</p>
+  <form method="post" action="/setup">
+    {% include "_person_fields.html" %}
+    <button class="fit" type="submit">Create account</button>
+  </form>
+</div>
+{% endblock %}

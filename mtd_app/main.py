@@ -20,6 +20,8 @@ from .hmrc_config import decrypt, encrypt
 from .hmrc_routes import router as hmrc_router
 from .models import IncomeSource, MileageTrip, Property, Transaction, User
 from .money import format_pence, parse_miles_tenths, parse_pence
+from .people_routes import has_users
+from .people_routes import router as people_router
 from .periods import quarters, tax_year_bounds, tax_year_of
 from .records import mileage_allowance_pence, profit_pence, totals_for
 from .web import DB, CurrentUser, LoginRequired, flash, get_db, redirect, render  # noqa: F401
@@ -35,6 +37,7 @@ app.add_middleware(SessionMiddleware, secret_key=secret_key(), same_site="lax",
 
 
 app.include_router(hmrc_router)
+app.include_router(people_router)
 
 
 @app.exception_handler(LoginRequired)
@@ -69,7 +72,9 @@ def own_property(db: Session, user: User, property_id: int) -> Property:
 # ---------------------------------------------------------------- login
 
 @app.get("/login")
-def login_form(request: Request):
+def login_form(request: Request, db: DB):
+    if not has_users(db):
+        return redirect("/setup")
     return render(request, "login.html")
 
 

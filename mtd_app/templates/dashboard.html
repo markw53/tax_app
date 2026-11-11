@@ -49,7 +49,7 @@
   {% if finance %}<p class="muted" style="margin-bottom: 0;">Profit leaves out {{ finance|money }} of mortgage interest, which gets a 20% tax credit instead of being deducted.</p>{% endif %}
 </div>
 {% else %}
-<div class="card"><p class="muted">No income sources set up yet. Add one with <code>python -m mtd_app.cli add-source</code>.</p></div>
+<div class="card"><p class="muted">No income sources set up yet. Add one on the <a href="/people">People</a> page.</p></div>
 {% endfor %}
 
 {% if properties %}

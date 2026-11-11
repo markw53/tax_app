@@ -14,6 +14,13 @@ def hash_password(password: str) -> str:
     return _hasher.hash(password)
 
 
+def verify_password(user: User, password: str) -> bool:
+    try:
+        return _hasher.verify(user.password_hash, password)
+    except VerifyMismatchError:
+        return False
+
+
 def authenticate(session: Session, email: str, password: str) -> User | None:
     user = session.scalar(select(User).where(User.email == email.strip().lower()))
     try:
