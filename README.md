@@ -23,14 +23,10 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/alembic upgrade head          # creates mtd.db
 
-.venv/bin/python -m mtd_app.cli create-user --email you@example.com --name "Your Name"
-.venv/bin/python -m mtd_app.cli add-source --email you@example.com --type self-employment \
-    --name "Delivery driving" --vehicle-method simplified
-.venv/bin/python -m mtd_app.cli add-property --name "Rental flat" \
-    --owner you@example.com:50 --owner partner@example.com:50
-
 .venv/bin/uvicorn mtd_app.main:app      # then open http://localhost:8000
 ```
+
+The first time you open it, the app asks you to create the first account and tick the type of work (self-employed driver, AQA exam writer, landlord). Once signed in, the **People** page adds other people, extra types of work, and properties with each owner's share. Click your name at the top to change your password. The same can be done from the terminal with `python -m mtd_app.cli` (`create-user`, `add-source`, `add-property`).
 
 Signing in takes a password and a code from an authenticator app (Google Authenticator, Microsoft Authenticator and so on), which HMRC requires; each user scans a QR code the first time. If someone loses their phone, `python -m mtd_app.cli reset-mfa --email ...` makes them set it up again.
 

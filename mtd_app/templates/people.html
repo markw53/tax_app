@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}People · MTD records{% endblock %}
+{% block content %}
+<h1>People</h1>
+<p class="muted">Everyone with an account. Each person only sees their own records and the properties they own. To change your own password, <a href="/account/password">go here</a>.</p>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Name</th><th>Email</th><th>Income sources</th><th>Properties</th></tr></thead>
+    <tbody>
+    {% for p in people %}
+      <tr>
+        <td>{{ p.name }}{% if p.id == user.id %} <span class="muted">(you)</span>{% endif %}</td>
+        <td>{{ p.email }}</td>
+        <td>{% for s in p.sources %}{{ s.name }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">None</span>{% endfor %}</td>
+        <td>{% for h in p.property_shares %}{{ h.property.name }} {{ "%g"|format(h.share_bp / 100) }}%{% if not loop.last %}, {% endif %}{% else %}<span class="muted">None</span>{% endfor %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h2>Add a person</h2>
+  <form method="post" action="/people">
+    {% include "_person_fields.html" %}
+    <button class="fit" type="submit">Add person</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Add a type of work to your account</h2>
+  <form method="post" action="/people/work" class="grid">
+    <div><label for="work">Type of work</label>
+      <select id="work" name="work">
+        {% for key, w in work_types.items() %}<option value="{{ key }}">{{ w[0] }}</option>{% endfor %}
+      </select></div>
+    <div><button type="submit">Add</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Add a property</h2>
+  <p class="muted">Enter each owner's share as a percentage and leave the others blank. You must be one of the owners.</p>
+  <form method="post" action="/people/properties">
+    <p><label for="prop_name">Name or address</label><input id="prop_name" name="name" required></p>
+    <div class="grid">
+      {% for p in people %}
+      <div><label for="share_{{ p.id }}">{{ p.name }}'s share (%)</label><input id="share_{{ p.id }}" name="share_{{ p.id }}" inputmode="decimal" placeholder="e.g. 50"></div>
+      {% endfor %}
+    </div>
+    <p><button class="fit" type="submit">Add property</button></p>
+  </form>
+</div>
+{% endblock %}

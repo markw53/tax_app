@@ -50,14 +50,20 @@
   .stat .v { font-size: 1.3rem; font-weight: 600; font-variant-numeric: tabular-nums; }
   .due { color: var(--err); font-weight: 600; }
   details summary { cursor: pointer; color: var(--accent); }
+  fieldset.checks { border: none; padding: 0; margin: 14px 0; }
+  fieldset.checks legend { font-size: .85rem; color: var(--muted); padding: 0; margin-bottom: 4px; }
+  fieldset.checks label { font-size: 1rem; color: var(--text); margin: 4px 0; }
+  input[type=checkbox] { width: auto; margin-right: 6px; }
+  button.fit { width: auto; padding-inline: 18px; }
 </style>
 </head>
 <body>
 {% if user %}
 <header><div class="wrap">
   <a class="home" href="/">MTD records</a>
+  <a href="/people">People</a>
   <a href="/hmrc">HMRC</a>
-  <span class="muted">{{ user.name }}</span>
+  <a href="/account/password" title="Change your password">{{ user.name }}</a>
   <form class="inline" method="post" action="/logout"><button class="link" type="submit">Sign out</button></form>
 </div></header>
 {% endif %}

@@ -1,0 +1,16 @@
+<div class="grid">
+  <div><label for="name">Name</label><input id="name" name="name" required></div>
+  <div><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="off" required></div>
+  <div><label for="password">Password (10+ characters)</label><input id="password" name="password" type="password" minlength="10" autocomplete="new-password" required></div>
+  <div><label for="repeat">Repeat password</label><input id="repeat" name="repeat" type="password" minlength="10" autocomplete="new-password" required></div>
+</div>
+<fieldset class="checks">
+  <legend>Type of work (tick all that apply)</legend>
+  {% for key, w in work_types.items() %}
+  <label><input type="checkbox" name="work" value="{{ key }}"> {{ w[0] }}</label>
+  {% endfor %}
+</fieldset>
+<fieldset class="checks">
+  <legend>Quarterly updates</legend>
+  <label><input type="checkbox" name="calendar_quarters" value="true"> Use calendar quarters (to 30 Jun, 30 Sep, 31 Dec, 5 Apr) instead of standard ones (to 5 Jul, 5 Oct, 5 Jan, 5 Apr)</label>
+</fieldset>
