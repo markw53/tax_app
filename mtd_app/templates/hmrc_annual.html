@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Allowances and adjustments · MTD records{% endblock %}
+{% block content %}
+<h1>Allowances and adjustments: {{ source.name }}</h1>
+<p class="muted"><a href="/hmrc?year={{ year }}#year-end">Back to HMRC</a> · Tax year {{ year }}. Leave anything that doesn't apply blank.
+  {% if source.type == "uk-property" %}Enter your own share of each amount.{% endif %}</p>
+
+<form method="post" action="/hmrc/annual/{{ source.id }}">
+  <input type="hidden" name="year" value="{{ year }}">
+  {% for section, title in [("allowances", "Allowances"), ("adjustments", "Adjustments"), ("nonFinancials", "National Insurance")] %}
+  {% set shown = fields | selectattr("section", "equalto", section) | list %}
+  {% if shown %}
+  <div class="card">
+    <h2>{{ title }}</h2>
+    {% for f in shown %}
+    <div style="margin-bottom: 14px; max-width: 520px;">
+      {% if f.kind == "bool" %}
+      <label style="font-size: 1rem; color: var(--text);"><input type="checkbox" name="{{ f.key }}" value="true" {% if values.get(f.key) %}checked{% endif %}> {{ f.label }}</label>
+      {% elif f.kind == "choice" %}
+      <label for="{{ f.key }}">{{ f.label }}</label>
+      <select id="{{ f.key }}" name="{{ f.key }}">
+        {% for value, text in exemptions.items() %}<option value="{{ value }}" {% if values.get(f.key, "") == value %}selected{% endif %}>{{ text }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <label for="{{ f.key }}">{{ f.label }} (£)</label>
+      <input id="{{ f.key }}" name="{{ f.key }}" inputmode="decimal" value="{{ values.get(f.key, "") }}" autocomplete="off">
+      {% endif %}
+      {% if f.hint %}<div class="muted" style="font-size: .85rem;">{{ f.hint }}</div>{% endif %}
+      {% if f.max_pence and has_expenses %}<div class="muted" style="font-size: .85rem;">You've recorded expenses for {{ year }}. If you claim this, they stay in your records but won't be sent to HMRC.</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endfor %}
+  <p class="muted">The tax estimate on your dashboard doesn't use these figures. HMRC's calculation does.</p>
+  <button class="fit" type="submit">Save and review</button>
+</form>
+{% endblock %}

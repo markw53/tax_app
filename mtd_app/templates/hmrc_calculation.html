@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 {% block title %}HMRC calculation · MTD records{% endblock %}
+{% macro gbp(v) %}£{{ "{:,.2f}".format(v or 0) }}{% endmacro %}
 {% block content %}
-<h1>HMRC calculation for {{ year }}</h1>
+<h1>HMRC {{ "final " if final }}calculation for {{ year }}</h1>
 <p class="muted"><a href="/hmrc?year={{ year }}">Back to HMRC</a> · Calculation {{ calc_id }}</p>
 
 {% if pending %}
@@ -9,14 +10,49 @@
 {% elif error %}
 <div class="flash error">{{ error }}</div>
 {% else %}
+{% for m in messages.errors or [] %}<div class="flash error">{{ m.text }}</div>{% endfor %}
+{% for m in messages.warnings or [] %}<div class="flash error">Warning: {{ m.text }}</div>{% endfor %}
 <div class="card">
   <div class="stats">
-    {% if tax.incomeTax %}<div class="stat"><div class="muted">Income tax</div><div class="v">£{{ "{:,.2f}".format(tax.incomeTax.totalIncomeTaxDue or 0) }}</div></div>{% endif %}
-    {% if tax.nics %}<div class="stat"><div class="muted">National Insurance</div><div class="v">£{{ "{:,.2f}".format(tax.nics.totalNic or 0) }}</div></div>{% endif %}
-    {% if tax.totalIncomeTaxAndNicsDue is defined %}<div class="stat"><div class="muted">Total due</div><div class="v">£{{ "{:,.2f}".format(tax.totalIncomeTaxAndNicsDue) }}</div></div>{% endif %}
+    {% if tax.incomeTax %}<div class="stat"><div class="muted">Income tax</div><div class="v">{{ gbp(tax.incomeTax.totalIncomeTaxDue) }}</div></div>{% endif %}
+    {% if tax.nics %}<div class="stat"><div class="muted">National Insurance</div><div class="v">{{ gbp(tax.nics.totalNic) }}</div></div>{% endif %}
+    {% if tax.totalIncomeTaxAndNicsDue is defined %}<div class="stat"><div class="muted">Total due</div><div class="v">{{ gbp(tax.totalIncomeTaxAndNicsDue) }}</div></div>{% endif %}
   </div>
-  <p class="muted">HMRC's in-year estimate, based on the updates it has received.</p>
-  <details><summary>Full response</summary><pre style="white-space: pre-wrap;">{{ raw }}</pre></details>
+  {% if tax.incomeTax %}
+  <table style="margin-top: 12px;">
+    <tbody>
+    {% for label, key in [("Income from all sources", "totalIncomeReceivedFromAllSources"), ("Allowances and deductions", "totalAllowancesAndDeductions"), ("Taxable income", "totalTaxableIncome"), ("Income tax charged", "incomeTaxCharged")] %}
+      {% if tax.incomeTax[key] is defined %}<tr><td>{{ label }}</td><td class="num">{{ gbp(tax.incomeTax[key]) }}</td></tr>{% endif %}
+    {% endfor %}
+    {% if tax.totalTaxDeducted is defined %}<tr><td>Tax already deducted</td><td class="num">{{ gbp(tax.totalTaxDeducted) }}</td></tr>{% endif %}
+    </tbody>
+  </table>
+  {% endif %}
+  <p class="muted">{% if final %}HMRC's final calculation for the year, based on everything it holds for you.{% else %}HMRC's in-year estimate, based on the updates it has received.{% endif %}</p>
+  <details><summary>Full calculation from HMRC</summary><pre style="white-space: pre-wrap;">{{ raw }}</pre></details>
 </div>
+
+{% if final %}
+<div class="card">
+  <h2>Final declaration</h2>
+  {% if declared %}
+  <p>You made your final declaration for {{ year }} on {{ declared.submitted_at.strftime("%-d %b %Y") }}.</p>
+  {% elif messages.errors %}
+  <p>HMRC found the problems above, so this calculation can't be declared. Fix them, resend the update or allowances affected, then get the final calculation again.</p>
+  {% else %}
+  <p>Check the calculation above, including the full calculation from HMRC. If something is wrong with your figures, correct your records, resend the update or allowances affected, then get the final calculation again.</p>
+  <p><strong>This app only sends self-employment and UK property income.</strong> Before you declare, anything else you need to report for {{ year }} (such as savings interest, dividends, pensions, capital gains or reliefs) must already be with HMRC, sent through HMRC's online services. Income taxed under PAYE is already held by HMRC.</p>
+  <form method="post" action="/hmrc/declaration">
+    <input type="hidden" name="year" value="{{ year }}">
+    <input type="hidden" name="id" value="{{ calc_id }}">
+    <p>Before you can submit the information displayed here in response to your notice to file from HM Revenue &amp; Customs, you must read and agree to the following statement by ticking the box.</p>
+    <fieldset class="checks">
+      <label><input type="checkbox" name="agree" value="yes" required> I declare that the information and tax return I have submitted are (taken together) correct and complete to the best of my knowledge. I understand that I may have to pay financial penalties and face prosecution if I give false information.</label>
+    </fieldset>
+    <button class="fit" type="submit">Submit final declaration to HMRC</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

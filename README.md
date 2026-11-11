@@ -6,7 +6,7 @@ This is a personal Streamlit web app designed for **self‑employed UK delivery 
 
 ## 🧾 MTD records app (`mtd_app/`)
 
-A multi-user web app for keeping Making Tax Digital records: self-employment and UK property income, with jointly owned property split between owners automatically. It doesn't talk to HMRC yet; that's the next phase.
+A multi-user web app for keeping Making Tax Digital records: self-employment and UK property income, with jointly owned property split between owners automatically. It connects to HMRC to send quarterly updates and finish the tax year.
 
 **What it does**
 
@@ -40,7 +40,7 @@ HMRC_CLIENT_SECRET=...
 HMRC_ENV=sandbox
 ```
 
-From there you add your NINO, sign in with HMRC, link each income source to its HMRC business, and review then send quarterly updates. Every submission, accepted or rejected, is kept with exactly what was sent. HMRC's tokens are stored encrypted with `MTD_ENCRYPTION_KEY` (otherwise generated once into `.encryption_key`; keep it with your database backup, or you'll need to reconnect).
+From there you add your NINO, sign in with HMRC, link each income source to its HMRC business, and review then send quarterly updates. After the tax year ends, the same page finishes the year: send each business's allowances and adjustments, get HMRC's final calculation, and make the final declaration that replaces the Self Assessment return. The app only reports self-employment and UK property income, so anything else (savings interest, dividends, capital gains, reliefs) has to reach HMRC through its online services before you declare. Every submission, accepted or rejected, is kept with exactly what was sent. HMRC's tokens are stored encrypted with `MTD_ENCRYPTION_KEY` (otherwise generated once into `.encryption_key`; keep it with your database backup, or you'll need to reconnect).
 
 **Configuration:** `MTD_DATABASE_URL` (default `sqlite:///mtd.db`) and `MTD_SECRET_KEY` (otherwise generated once into `.secret_key`). Back up `mtd.db`: HMRC requires you to keep records for at least 5 years after the 31 January filing deadline.
 

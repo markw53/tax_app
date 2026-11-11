@@ -130,6 +130,29 @@ class HmrcClient:
                    f"/cumulative/{tax_year_param(tax_year)}",
             "property", token, fraud, json=body)
 
+    def submit_self_employment_annual(self, token, fraud, nino: str, business_id: str,
+                                      tax_year: str, body: dict) -> httpx.Response:
+        """Allowances and adjustments for the year. Replaces any sent before."""
+        return self._call(
+            "PUT", f"/individuals/business/self-employment/{nino}/{business_id}"
+                   f"/annual/{tax_year_param(tax_year)}",
+            "self-employment", token, fraud, json=body)
+
+    def submit_uk_property_annual(self, token, fraud, nino: str, business_id: str,
+                                  tax_year: str, body: dict) -> httpx.Response:
+        return self._call(
+            "PUT", f"/individuals/business/property/uk/{nino}/{business_id}"
+                   f"/annual/{tax_year_param(tax_year)}",
+            "property", token, fraud, json=body)
+
+    def submit_final_declaration(self, token, fraud, nino: str, tax_year: str,
+                                 calculation_id: str) -> httpx.Response:
+        """Agree an intent-to-finalise calculation. This is the tax return."""
+        return self._call(
+            "POST", f"/individuals/calculations/{nino}/self-assessment"
+                    f"/{tax_year_param(tax_year)}/{calculation_id}/final-declaration",
+            "calculations", token, fraud)
+
     def trigger_calculation(self, token, fraud, nino: str, tax_year: str,
                             calculation_type: str = "in-year") -> str:
         resp = self._call(
